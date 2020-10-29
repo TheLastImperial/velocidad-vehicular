@@ -27,7 +27,7 @@ def detect_video(Yolo, video_path, output_path, input_size=416,
     while True:
         count+=1
         _, img = vid.read()
-        
+
 
 
         try:
@@ -40,31 +40,31 @@ def detect_video(Yolo, video_path, output_path, input_size=416,
             image_data = image_data[np.newaxis, ...].astype(np.float32)
 
             t1 = time.time()
-            
+
             pred_bbox = Yolo.predict(image_data)
-            
+
             t2 = time.time()
-            
+
             pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
             pred_bbox = tf.concat(pred_bbox, axis=0)
 
             bboxes = postprocess_boxes(pred_bbox, original_image, input_size, score_threshold)
             bboxes = nms(bboxes, iou_threshold, method='nms')
-            
+
             image = draw_bbox(original_image, bboxes, CLASSES=CLASSES, rectangle_colors=rectangle_colors)
 
 
             t3 = time.time()
             times.append(t2-t1)
             times_2.append(t3-t1)
-            
+
             times = times[-20:]
             times_2 = times_2[-20:]
 
             ms = sum(times)/len(times)*1000
             fps = 1000 / ms
             fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
-            
+
             # image = cv2.putText(image, "Time: {:.1f}FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
             # CreateXMLfile("XML_Detections", str(int(time.time())), original_image, bboxes, read_class_names(CLASSES))
             frames = 0
@@ -89,7 +89,7 @@ def get_bboxes(Yolo, img, input_size=416, score_threshold=0.3, iou_threshold=0.4
     image_data = image_data[np.newaxis, ...].astype(np.float32)
 
     pred_bbox = Yolo.predict(image_data)
-    
+
     pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
     pred_bbox = tf.concat(pred_bbox, axis=0)
 
@@ -115,21 +115,21 @@ def draw_box_label(img, bbox_cv2, box_color=(0, 255, 255), show_label=True):
     font_size = 0.7
     font_color = (0, 0, 0)
     left, top, right, bottom = bbox_cv2[1], bbox_cv2[0], bbox_cv2[3], bbox_cv2[2]
-    
+
     # Draw the bounding box
     cv2.rectangle(img, (left, top), (right, bottom), box_color, 4)
-    
+
     if show_label:
         # Draw a filled box on top of the bounding box (as the background for the labels)
         cv2.rectangle(img, (left-2, top-45), (right+2, top), box_color, -1, 1)
-        
+
         # Output the labels that show the x and y coordinates of the bounding box center.
         text_x= 'x='+str((left+right)/2)
         cv2.putText(img,text_x,(left,top-25), font, font_size, font_color, 1, cv2.LINE_AA)
         text_y= 'y='+str((top+bottom)/2)
         cv2.putText(img,text_y,(left,top-5), font, font_size, font_color, 1, cv2.LINE_AA)
-    
-    return img    
+
+    return img
 
 
 def show_video(video_path):

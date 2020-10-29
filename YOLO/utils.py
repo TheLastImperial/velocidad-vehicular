@@ -28,7 +28,7 @@ def load_yolo_weights(model, weights_file):
     if YOLO_TYPE == "yolov4":
         range1 = 110 if not TRAIN_YOLO_TINY else 21
         range2 = [93, 101, 109] if not TRAIN_YOLO_TINY else [17, 20]
-    
+
     with open(weights_file, 'rb') as wf:
         major, minor, revision, seen, _ = np.fromfile(wf, dtype=np.int32, count=5)
 
@@ -38,12 +38,12 @@ def load_yolo_weights(model, weights_file):
                 conv_layer_name = 'conv2d_%d' %i
             else:
                 conv_layer_name = 'conv2d'
-                
+
             if j > 0:
                 bn_layer_name = 'batch_normalization_%d' %j
             else:
                 bn_layer_name = 'batch_normalization'
-            
+
             conv_layer = model.get_layer(conv_layer_name)
             filters = conv_layer.filters
             k_size = conv_layer.kernel_size[0]
@@ -78,20 +78,20 @@ def Load_Yolo_model():
     if len(gpus) > 0:
         try: tf.config.experimental.set_memory_growth(gpus[0], True)
         except RuntimeError: pass
-        
+
     if YOLO_FRAMEWORK == "tf": # TensorFlow detection
         if YOLO_TYPE == "yolov4":
             Darknet_weights = YOLO_V4_TINY_WEIGHTS if TRAIN_YOLO_TINY else YOLO_V4_WEIGHTS
         if YOLO_TYPE == "yolov3":
             Darknet_weights = YOLO_V3_TINY_WEIGHTS if TRAIN_YOLO_TINY else YOLO_V3_WEIGHTS
-            
+
         if YOLO_CUSTOM_WEIGHTS == False:
             yolo = Create_Yolo(input_size=YOLO_INPUT_SIZE, CLASSES=YOLO_COCO_CLASSES)
             load_yolo_weights(yolo, Darknet_weights) # use Darknet weights
         else:
             yolo = Create_Yolo(input_size=YOLO_INPUT_SIZE, CLASSES=TRAIN_CLASSES)
             yolo.load_weights(YOLO_CUSTOM_WEIGHTS) # use custom weights
-        
+
     elif YOLO_FRAMEWORK == "trt": # TensorRT detection
         saved_model_loaded = tf.saved_model.load(YOLO_CUSTOM_WEIGHTS, tags=[tag_constants.SERVING])
         signature_keys = list(saved_model_loaded.signatures.keys())
@@ -121,7 +121,7 @@ def image_preprocess(image, target_size, gt_boxes=None):
         return image_paded, gt_boxes
 
 
-def draw_bbox(image, bboxes, CLASSES=YOLO_COCO_CLASSES, show_label=True, show_confidence = True, Text_colors=(255,255,0), rectangle_colors='', tracking=False):   
+def draw_bbox(image, bboxes, CLASSES=YOLO_COCO_CLASSES, show_label=True, show_confidence = True, Text_colors=(255,255,0), rectangle_colors='', tracking=False):
     NUM_CLASS = read_class_names(CLASSES)
     num_classes = len(NUM_CLASS)
     image_h, image_w, _ = image.shape
@@ -199,7 +199,7 @@ def nms(bboxes, iou_threshold, sigma=0.3, method='nms'):
     for cls in classes_in_img:
         cls_mask = (bboxes[:, 5] == cls)
         cls_bboxes = bboxes[cls_mask]
-        # Process 1: Determine whether the number of bounding boxes is greater than 0 
+        # Process 1: Determine whether the number of bounding boxes is greater than 0
         while len(cls_bboxes) > 0:
             # Process 2: Select the bounding box with the highest score according to socre order A
             max_ind = np.argmax(cls_bboxes[:, 4])
@@ -207,7 +207,7 @@ def nms(bboxes, iou_threshold, sigma=0.3, method='nms'):
             best_bboxes.append(best_bbox)
             cls_bboxes = np.concatenate([cls_bboxes[: max_ind], cls_bboxes[max_ind + 1:]])
             # Process 3: Calculate this bounding box A and
-            # Remain all iou of the bounding box and remove those bounding boxes whose iou value is higher than the threshold 
+            # Remain all iou of the bounding box and remove those bounding boxes whose iou value is higher than the threshold
             iou = bboxes_iou(best_bbox[np.newaxis, :4], cls_bboxes[:, :4])
             weight = np.ones((len(iou),), dtype=np.float32)
 
@@ -285,10 +285,10 @@ def detect_image(Yolo, image_path, output_path, input_size=416, show=False, CLAS
         for key, value in result.items():
             value = value.numpy()
             pred_bbox.append(value)
-        
+
     pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
     pred_bbox = tf.concat(pred_bbox, axis=0)
-    
+
     bboxes = postprocess_boxes(pred_bbox, original_image, input_size, score_threshold)
     bboxes = nms(bboxes, iou_threshold, method='nms')
 
@@ -303,7 +303,7 @@ def detect_image(Yolo, image_path, output_path, input_size=416, show=False, CLAS
         cv2.waitKey(0)
         # To close the window after the required kill value was provided
         cv2.destroyAllWindows()
-        
+
     return image
 
 def Predict_bbox_mp(Frames_data, Predicted_data, Processing_times):
@@ -318,7 +318,7 @@ def Predict_bbox_mp(Frames_data, Predicted_data, Processing_times):
             image_data = Frames_data.get()
             t1 = time.time()
             Processing_times.put(time.time())
-            
+
             if YOLO_FRAMEWORK == "tf":
                 pred_bbox = Yolo.predict(image_data)
             elif YOLO_FRAMEWORK == "trt":
@@ -331,7 +331,7 @@ def Predict_bbox_mp(Frames_data, Predicted_data, Processing_times):
 
             pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
             pred_bbox = tf.concat(pred_bbox, axis=0)
-            
+
             Predicted_data.put(pred_bbox)
 
 
@@ -345,18 +345,18 @@ def postprocess_mp(Predicted_data, original_frames, Processed_frames, Processing
                     original_image = original_frames.get()
             else:
                 original_image = original_frames.get()
-            
+
             bboxes = postprocess_boxes(pred_bbox, original_image, input_size, score_threshold)
             bboxes = nms(bboxes, iou_threshold, method='nms')
             image = draw_bbox(original_image, bboxes, CLASSES=CLASSES, rectangle_colors=rectangle_colors)
             times.append(time.time()-Processing_times.get())
             times = times[-20:]
-            
+
             ms = sum(times)/len(times)*1000
             fps = 1000 / ms
             image = cv2.putText(image, "Time: {:.1f}FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
             #print("Time: {:.2f}ms, Final FPS: {:.1f}".format(ms, fps))
-            
+
             Processed_frames.put(image)
 
 def Show_Image_mp(Processed_frames, show, Final_frames):
@@ -391,14 +391,14 @@ def detect_video_realtime_mp(video_path, output_path, input_size=416, show=False
     Processed_frames = Queue()
     Processing_times = Queue()
     Final_frames = Queue()
-    
+
     p1 = Process(target=Predict_bbox_mp, args=(Frames_data, Predicted_data, Processing_times))
     p2 = Process(target=postprocess_mp, args=(Predicted_data, original_frames, Processed_frames, Processing_times, input_size, CLASSES, score_threshold, iou_threshold, rectangle_colors, realtime))
     p3 = Process(target=Show_Image_mp, args=(Processed_frames, show, Final_frames))
     p1.start()
     p2.start()
     p3.start()
-        
+
     while True:
         ret, img = vid.read()
         if not ret:
@@ -411,7 +411,7 @@ def detect_video_realtime_mp(video_path, output_path, input_size=416, show=False
         image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
         image_data = image_data[np.newaxis, ...].astype(np.float32)
         Frames_data.put(image_data)
-        
+
     while True:
         if original_frames.qsize() == 0 and Frames_data.qsize() == 0 and Predicted_data.qsize() == 0  and Processed_frames.qsize() == 0  and Processing_times.qsize() == 0 and Final_frames.qsize() == 0:
             p1.terminate()
@@ -457,31 +457,31 @@ def detect_video(Yolo, video_path, output_path, input_size=416, show=False, CLAS
             for key, value in result.items():
                 value = value.numpy()
                 pred_bbox.append(value)
-        
+
         t2 = time.time()
-        
+
         pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
         pred_bbox = tf.concat(pred_bbox, axis=0)
 
         bboxes = postprocess_boxes(pred_bbox, original_image, input_size, score_threshold)
         bboxes = nms(bboxes, iou_threshold, method='nms')
-        
+
         image = draw_bbox(original_image, bboxes, CLASSES=CLASSES, rectangle_colors=rectangle_colors)
 
         t3 = time.time()
         times.append(t2-t1)
         times_2.append(t3-t1)
-        
+
         times = times[-20:]
         times_2 = times_2[-20:]
 
         ms = sum(times)/len(times)*1000
         fps = 1000 / ms
         fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
-        
+
         image = cv2.putText(image, "Time: {:.1f}FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
         # CreateXMLfile("XML_Detections", str(int(time.time())), original_image, bboxes, read_class_names(CLASSES))
-        
+
         print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
         if output_path != '': out.write(image)
         if show:
@@ -526,21 +526,21 @@ def detect_realtime(Yolo, output_path, input_size=416, show=False, CLASSES=YOLO_
             for key, value in result.items():
                 value = value.numpy()
                 pred_bbox.append(value)
-        
+
         t2 = time.time()
-        
+
         pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
         pred_bbox = tf.concat(pred_bbox, axis=0)
 
         bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
         bboxes = nms(bboxes, iou_threshold, method='nms')
-        
+
         times.append(t2-t1)
         times = times[-20:]
-        
+
         ms = sum(times)/len(times)*1000
         fps = 1000 / ms
-        
+
         print("Time: {:.2f}ms, {:.1f} FPS".format(ms, fps))
 
         frame = draw_bbox(original_frame, bboxes, CLASSES=CLASSES, rectangle_colors=rectangle_colors)
