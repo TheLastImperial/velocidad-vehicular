@@ -8,6 +8,7 @@ from collections import deque
 import numpy as np
 from numpy import dot
 from scipy.linalg import inv, block_diag
+from scipy.optimize import linear_sum_assignment
 import cv2
 
 from TLI import utils

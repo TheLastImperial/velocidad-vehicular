@@ -96,6 +96,9 @@ def get_bboxes(Yolo, img, input_size=416, score_threshold=0.3, iou_threshold=0.4
     bboxes = postprocess_boxes(pred_bbox, img, input_size, score_threshold)
     bboxes = nms(bboxes, iou_threshold, method='nms')
 
+    if len(bboxes) == 0:
+        return [], [], []
+
     transpose = np.transpose(bboxes)
     coors = np.array(transpose[:4], dtype=np.int32)
 
