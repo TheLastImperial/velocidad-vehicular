@@ -12,6 +12,20 @@ from scipy.optimize import linear_sum_assignment
 import cv2
 
 from TLI import utils
+def box_iou2(a, b):
+    '''
+    Helper funciton to calculate the ratio between intersection and the union of
+    two boxes a and b
+    a[0], a[1], a[2], a[3] <-> left, up, right, bottom
+    '''
+
+    w_intsec = np.maximum (0, (np.minimum(a[2], b[2]) - np.maximum(a[0], b[0])))
+    h_intsec = np.maximum (0, (np.minimum(a[3], b[3]) - np.maximum(a[1], b[1])))
+    s_intsec = w_intsec * h_intsec
+    s_a = (a[2] - a[0])*(a[3] - a[1])
+    s_b = (b[2] - b[0])*(b[3] - b[1])
+
+    return float(s_intsec)/(s_a + s_b -s_intsec)
 
 class Tracker(): # class for Kalman Filter-based tracker
     def __init__(self):
@@ -111,7 +125,7 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
         #trk = convert_to_cv2bbox(trk)
         for d,det in enumerate(detections):
          #   det = convert_to_cv2bbox(det)
-            IOU_mat[t,d] = helpers.box_iou2(trk, det)
+            IOU_mat[t,d] = box_iou2(trk, det)
 
     # Produces matches
     # Solve the maximizing the sum of IOU assignment problem using the
@@ -159,10 +173,14 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
 
     img_dim = (img.shape[1], img.shape[0])
     coors, scores, classes = utils.get_bboxes(yolo, img)
-    z_box = coors
+    # z_box = coors
+    z_box = utils.move_x_to_y(coors)
+
+    utils.draw_all_boxes(img, z_box)
+
     print("Caantidad: {}".format(str(len(classes))))
-    if len(z_box) > 0:
-        return img
+    # if len(z_box) > 0:
+    #     return img
 
     x_box =[]
 

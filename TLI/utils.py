@@ -97,7 +97,7 @@ def get_bboxes(Yolo, img, input_size=416, score_threshold=0.3, iou_threshold=0.4
     bboxes = nms(bboxes, iou_threshold, method='nms')
 
     if len(bboxes) == 0:
-        return [], [], []
+        return np.array([]), np.array([]), np.array([])
 
     transpose = np.transpose(bboxes)
     coors = np.array(transpose[:4], dtype=np.int32)
@@ -134,6 +134,18 @@ def draw_box_label(img, bbox_cv2, box_color=(0, 255, 255), show_label=True):
 
     return img
 
+def draw_all_boxes(img, bboxes, box_color=(255, 0, 0)):
+    for box in bboxes:
+        left, top, right, bottom = box[1], box[0], box[3], box[2]
+        cv2.rectangle(img, (left, top), (right, bottom), box_color, 1)
+
+def move_x_to_y(coors):
+    coors2 = coors.T
+    if len(coors2) != 4:
+        return coors
+    coors2 = np.array([coors2[1], coors2[0], coors2[3], coors2[2]])
+    coors2 = coors2.T
+    return coors2
 
 def show_video(video_path):
     vid = cv2.VideoCapture(video_path)
