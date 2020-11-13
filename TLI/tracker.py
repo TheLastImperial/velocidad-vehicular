@@ -25,12 +25,18 @@ def box_iou2(a, b):
     s_a = (a[2] - a[0])*(a[3] - a[1])
     s_b = (b[2] - b[0])*(b[3] - b[1])
 
-    return float(s_intsec)/(s_a + s_b -s_intsec)
+    a = float(s_intsec)
+    b = (s_a + s_b -s_intsec)
+    if b == 0:
+        return 0
+    return a/b
 
 class Tracker(): # class for Kalman Filter-based tracker
     def __init__(self):
         # Initialize parametes for tracker (history)
         self.id = 0  # tracker's id
+
+        # Format to box: top, left, bottom, right
         self.box = [] # list to store the coordinates for a bounding box
         self.hits = 0 # number of detection matches
         self.no_losses = 0 # number of unmatched tracks (track loss)
@@ -77,12 +83,32 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.R = np.diag(self.R_diag_array)
 
 
+        # Attributes to draw an line track and know if the increase or decree the area size.
+        self.center = np.array([])
+        self.w = 0
+        self.h = 0
+        self.area = 0
+        self.areas = []
+        self.track = []
+
     def update_R(self):
         R_diag_array = self.R_scaler * np.array([self.L, self.L, self.L, self.L])
         self.R = np.diag(R_diag_array)
 
+    def add_box(self, box):
+        self.box = box
 
+        top, left, bottom, right = box[0], box[1], box[2], box[3]
 
+        # Center format [x, y]
+        self.center = np.array([
+            left + int((right-left)/2), top + int((bottom-top)/2)
+        ])
+        self.w = right-left
+        self.h = bottom-top
+        self.area = self.h * self.w
+        self.areas.append(self.area)
+        self.track.append(self.center)
 
     def kalman_filter(self, z):
         '''
@@ -172,15 +198,9 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
     frame_count+=1
 
     img_dim = (img.shape[1], img.shape[0])
-    coors, scores, classes = utils.get_bboxes(yolo, img)
-    # z_box = coors
+    coors, scores, classes = utils.get_bboxes(yolo, img, score_threshold=0.5)
     z_box = utils.move_x_to_y(coors)
 
-    utils.draw_all_boxes(img, z_box)
-
-    print("Caantidad: {}".format(str(len(classes))))
-    # if len(z_box) > 0:
-    #     return img
 
     x_box =[]
 
@@ -200,7 +220,7 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
             xx = tmp_trk.x_state.T[0].tolist()
             xx =[xx[0], xx[2], xx[4], xx[6]]
             x_box[trk_idx] = xx
-            tmp_trk.box =xx
+            tmp_trk.add_box(xx)
             tmp_trk.hits += 1
             tmp_trk.no_losses = 0
 
@@ -216,7 +236,7 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
             xx = tmp_trk.x_state
             xx = xx.T[0].tolist()
             xx =[xx[0], xx[2], xx[4], xx[6]]
-            tmp_trk.box = xx
+            tmp_trk.add_box(xx)
             tmp_trk.id = track_id_list.popleft() # assign an ID for the tracker
             tracker_list.append(tmp_trk)
             x_box.append(xx)
@@ -230,18 +250,18 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
             xx = tmp_trk.x_state
             xx = xx.T[0].tolist()
             xx =[xx[0], xx[2], xx[4], xx[6]]
-            tmp_trk.box =xx
+            tmp_trk.add_box(xx)
             x_box[trk_idx] = xx
 
 
     # The list of tracks to be annotated
     good_tracker_list =[]
     for trk in tracker_list:
+        # print("Classes: {}, TrkH: {}, Min: {}, TrkN: {}, Max: {}".format(
+        #    str(len(classes)), trk.hits, min_hits, trk.no_losses, max_age))
         if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
              good_tracker_list.append(trk)
-             x_cv2 = trk.box
-             img = utils.draw_box_label(img, x_cv2) # Draw the bounding boxes on the
-                                             # images
+             img = utils.draw_tracker(img, trk)
     # Book keeping
     deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
 
@@ -249,7 +269,6 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
             track_id_list.append(trk.id)
 
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
-
     return img
 
 def detection(video_path, yolo):

@@ -84,6 +84,11 @@ def detect_video(Yolo, video_path, output_path, input_size=416,
 
     cv2.destroyAllWindows()
 
+
+#############################################################################
+# This method get the bboxes, scores and classes.
+# The BBoxes have the format:
+# [[top, left, bottom, right], ...]
 def get_bboxes(Yolo, img, input_size=416, score_threshold=0.3, iou_threshold=0.45):
     image_data = image_preprocess(np.copy(img), [input_size, input_size])
     image_data = image_data[np.newaxis, ...].astype(np.float32)
@@ -108,7 +113,6 @@ def get_bboxes(Yolo, img, input_size=416, score_threshold=0.3, iou_threshold=0.4
     return np.transpose(coors), scores, classes
 
 def draw_box_label(img, bbox_cv2, box_color=(0, 255, 255), show_label=True):
-    print("Img shape: {}, bbox: {}".format(img.shape, str(len(bbox_cv2))))
     '''
     Helper funciton for drawing the bounding boxes and the labels
     bbox_cv2 = [left, top, right, bottom]
@@ -147,6 +151,22 @@ def move_x_to_y(coors):
     coors2 = coors2.T
     return coors2
 
+def draw_tracker(img, tracker, box_color=(0, 255, 255), track_color=(0, 255, 255), show_box=True, show_track=True):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_size = 0.7
+    font_color = (0, 0, 0)
+    left, top, right, bottom = tracker.box[1], tracker.box[0], tracker.box[3], tracker.box[2]
+
+    if show_box:
+        # Draw the bounding box
+        cv2.rectangle(img, (left, top), (right, bottom), box_color, 1)
+
+    if show_track:
+        # Draw track
+        pts = np.array(tracker.track, np.int32)
+        cv2.polylines(img, [pts], False, box_color)
+
+    return img
 def show_video(video_path):
     vid = cv2.VideoCapture(video_path)
     ret, img = vid.read()
