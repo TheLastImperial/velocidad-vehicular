@@ -163,8 +163,9 @@ def draw_tracker(img, tracker, box_color=(0, 255, 255), track_color=(0, 255, 255
 
     if show_track:
         # Draw track
-        pts = np.array(tracker.track, np.int32)
-        cv2.polylines(img, [pts], False, box_color)
+        pts = np.array(tracker.track(), np.int32)
+        if pts.size > 1:
+            cv2.polylines(img, [pts], False, box_color)
 
     return img
 def show_video(video_path):

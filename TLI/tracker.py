@@ -110,6 +110,17 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.areas.append(self.area)
         self.track.append(self.center)
 
+    def track(self, jump=10):
+        if jump==0:
+            return self.track
+        track = np.array(self.track)
+        t = np.arange(0, len(track))
+        t2 = np.arange(0, len(track), jump)
+        t = np.delete(t, t2)
+        result = np.delete(track, t, axis=0)
+        result = np.append(result, [track[-1]], axis=0)
+        return result
+
     def kalman_filter(self, z):
         '''
         Implement the Kalman Filter, including the predict and the update stages,
@@ -198,7 +209,7 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
     frame_count+=1
 
     img_dim = (img.shape[1], img.shape[0])
-    coors, scores, classes = utils.get_bboxes(yolo, img, score_threshold=0.5)
+    coors, scores, classes = utils.get_bboxes(yolo, img, score_threshold=0.7)
     z_box = utils.move_x_to_y(coors)
 
 
@@ -273,7 +284,7 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
 
 def detection(video_path, yolo):
     frame_count = 0
-    max_age = 4
+    max_age = 20
     min_hits = 1
     tracker_list =[]
     track_id_list = deque(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'])
