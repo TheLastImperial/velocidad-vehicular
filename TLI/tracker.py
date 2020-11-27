@@ -90,6 +90,12 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.area = 0
         self.areas = []
         self.track = []
+        self.rocs = []
+        self.roc = 0
+        self.straight = [[]]
+        self.straights = []
+        self.angle = []
+        self.angles = []
 
     def update_R(self):
         R_diag_array = self.R_scaler * np.array([self.L, self.L, self.L, self.L])
@@ -110,7 +116,28 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.areas.append(self.area)
         self.track.append(self.center)
 
-    def track(self, jump=10):
+
+        # Rate of change
+        if len(self.areas) == 0:
+            self.roc = 0
+        else:
+            ant = self.areas[-1]
+            if ant == 0:
+                self.roc = 0
+            else:
+                self.roc = float(ant - self.area) / float(ant)
+        self.rocs.append(self.roc)
+
+        self.straight, self.angle = self.__gen_straight()
+        self.straights.append(self.straight)
+        self.angles.append(self.angle)
+
+    # This method return the track but with a jump intervale.
+    # For example:
+    # [[1,2], [3,4], [5,6], [7,8], [9,10], [11,12], [13,14]]
+    # j_track(jump=2) will return
+    # [[1,2], [7,8], [13,14]]
+    def j_track(self, jump=10):
         if jump==0:
             return self.track
         track = np.array(self.track)
@@ -120,6 +147,49 @@ class Tracker(): # class for Kalman Filter-based tracker
         result = np.delete(track, t, axis=0)
         result = np.append(result, [track[-1]], axis=0)
         return result
+
+    # This method generate the straight and the angles to
+    # the current track.
+    def __gen_straight(self):
+        track = np.array(self.track)
+        x = track.T[0]
+        y = track.T[1]
+
+        exy = np.sum(x*y)
+        ex = np.sum(x)
+        ey = np.sum(y)
+
+        exp = np.sum(np.power(x, 2))
+
+        m = (len(x)*exy) - (ex * ey)
+
+        m /= ((len(x)*exp) - pow(ex, 2))
+
+        b = np.average(y) - (m * np.average(x))
+
+        y_line = b + (m*x)
+
+        straight = []
+        straight.append(x)
+        straight.append(y_line)
+        straight = np.array(straight).T
+
+        A = 0.0
+        B = 0.0
+        import math
+        if len(x) > 1:
+            pt1 = straight[0]
+            pt2 = straight[-1]
+            a = pt1[0] - pt2[0]
+            b = pt1[1] - pt2[1]
+            c = math.sqrt(pow(a, 2) + pow(b, 2))
+
+            A = (a * math.sin(c)) / c
+            A = math.degrees(math.asin(A))
+            straight = [pt1, pt2]
+            B = 90.0 - A
+
+        return np.array(straight), [A, B]
 
     def kalman_filter(self, z):
         '''
