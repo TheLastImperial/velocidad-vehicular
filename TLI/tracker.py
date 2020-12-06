@@ -25,11 +25,11 @@ def box_iou2(a, b):
     s_a = (a[2] - a[0])*(a[3] - a[1])
     s_b = (b[2] - b[0])*(b[3] - b[1])
 
-    a = float(s_intsec)
-    b = (s_a + s_b -s_intsec)
-    if b == 0:
+    c = float(s_intsec)
+    d = (s_a + s_b -s_intsec)
+    if d == 0:
         return 0
-    return a/b
+    return c/d
 
 class Tracker(): # class for Kalman Filter-based tracker
     def __init__(self):
@@ -163,7 +163,7 @@ class Tracker(): # class for Kalman Filter-based tracker
 
         m = (len(x)*exy) - (ex * ey)
 
-        m /= ((len(x)*exp) - pow(ex, 2))
+        m /= ((len(x)*exp) - pow(ex, 2)) + 0.000001
 
         b = np.average(y) - (m * np.average(x))
 
@@ -182,7 +182,7 @@ class Tracker(): # class for Kalman Filter-based tracker
             pt2 = straight[-1]
             a = pt1[0] - pt2[0]
             b = pt1[1] - pt2[1]
-            c = math.sqrt(pow(a, 2) + pow(b, 2))
+            c = math.sqrt(pow(a, 2) + pow(b, 2)) + 0.000001
 
             A = (a * math.sin(c)) / c
             A = math.degrees(math.asin(A))
@@ -271,17 +271,23 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
 
     return matches, np.array(unmatched_detections), np.array(unmatched_trackers)
 
-def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
-    track_id_list):
-    '''
-    Pipeline function for detection and tracking
-    '''
-    frame_count+=1
+def detector(img, yolo, max_age, min_hits, tracker_list,
+    track_id_list, cut_img=None):
 
-    img_dim = (img.shape[1], img.shape[0])
-    coors, scores, classes = utils.get_bboxes(yolo, img, score_threshold=0.7)
+    img_process = np.copy(img)
+    if cut_img is not None:
+        img_process = img[cut_img[0]:cut_img[1], cut_img[2]:cut_img[3]]
+
+    coors, scores, classes = utils.get_bboxes(yolo, img_process, score_threshold=0.7)
     z_box = utils.move_x_to_y(coors)
 
+    if cut_img is not None and len(z_box) > 0:
+        plus_cut = z_box.T
+        plus_cut[0] += cut_img[0]
+        plus_cut[1] += cut_img[2]
+        plus_cut[2] += cut_img[0]
+        plus_cut[3] += cut_img[2]
+        z_box = plus_cut.T
 
     x_box =[]
 
@@ -352,9 +358,8 @@ def pipeline(img, yolo, frame_count, max_age, min_hits, tracker_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def detection(video_path, yolo):
-    frame_count = 0
-    max_age = 20
+def detection(video_path, yolo, cut_img=None, video_out=None):
+    max_age = 4
     min_hits = 1
     tracker_list =[]
     track_id_list = deque(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'])
@@ -362,9 +367,16 @@ def detection(video_path, yolo):
 
     ret, img = vid.read()
 
+    if video_out is not None:
+        out = cv2.VideoWriter(video_out, cv2.VideoWriter_fourcc(*'mp4v'), 60, (1920,1080))
+
     while ret:
-        img = pipeline(img, yolo, frame_count, max_age,
-            min_hits, tracker_list, track_id_list)
+        img = detector(img, yolo, max_age,
+            min_hits, tracker_list, track_id_list, cut_img)
+
+        if video_out is not None:
+            out.write(img)
+
         cv2.imshow('Testing', img)
         ret, img = vid.read()
         if cv2.waitKey(25) & 0xFF == ord("q"):
@@ -372,4 +384,6 @@ def detection(video_path, yolo):
             cv2.destroyAllWindows()
             break
 
+    if video_out is not None:
+        out.release()
     cv2.destroyAllWindows()
