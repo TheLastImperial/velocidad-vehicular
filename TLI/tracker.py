@@ -185,15 +185,13 @@ class Tracker(): # class for Kalman Filter-based tracker
         A = 0.0
         B = 0.0
         import math
+
         if len(x) > 1:
             pt1 = straight[0]
             pt2 = straight[-1]
-            a = pt1[0] - pt2[0]
-            b = pt1[1] - pt2[1]
-            c = math.sqrt(pow(a, 2) + pow(b, 2)) + 0.000001
 
-            A = (a * math.sin(c)) / c
-            A = math.degrees(math.asin(A))
+            A = math.atan((pt1[0] - pt2[0])/(pt1[1] - pt2[1] + 0.0000001))
+            A = math.degrees(A)
             straight = [pt1, pt2]
             B = 90.0 - A
 
@@ -277,8 +275,8 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
     else:
         matches = np.concatenate(matches,axis=0)
 
-    return matches, np.array(unmatched_detections),
-        np.array(unmatched_trackers)
+    return (matches, np.array(unmatched_detections),
+            np.array(unmatched_trackers))
 
 # tracker_list: Es una lista con objetos de tipo Tracker
 def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
@@ -308,7 +306,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
             x_box.append(trk.box)
 
     matched, unmatched_dets, unmatched_trks = assign_detections_to_trackers(
-            box, z_box, iou_thrd = 0.3
+            x_box, z_box, iou_thrd = 0.3
         )
 
     # Deal with matched detections
