@@ -126,14 +126,12 @@ class Tracker(): # class for Kalman Filter-based tracker
 
 
         # Rate of change
-        if len(self.areas) == 0:
+        if len(self.areas) <= 2:
             self.roc = 0
         else:
-            ant = self.areas[-1]
-            if ant == 0:
-                self.roc = 0
-            else:
-                self.roc = float(ant - self.area) / float(ant)
+            ant = self.areas[-2]
+            act = self.area
+            self.roc = float(ant - act) / (float(ant) + 0.000001)
         self.rocs.append(self.roc)
 
         self.straight, self.angle = self.__gen_straight()
