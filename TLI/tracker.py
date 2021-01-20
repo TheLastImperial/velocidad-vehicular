@@ -14,13 +14,15 @@ import cv2
 from TLI import utils
 def box_iou2(a, b):
     '''
-    Helper funciton to calculate the ratio between intersection and the union of
-    two boxes a and b
+    Helper funciton to calculate the ratio between intersection
+    and the union of two boxes a and b
     a[0], a[1], a[2], a[3] <-> left, up, right, bottom
     '''
 
-    w_intsec = np.maximum (0, (np.minimum(a[2], b[2]) - np.maximum(a[0], b[0])))
-    h_intsec = np.maximum (0, (np.minimum(a[3], b[3]) - np.maximum(a[1], b[1])))
+    w_intsec = np.maximum (0, (np.minimum(a[2], b[2]) -
+        np.maximum(a[0], b[0])))
+    h_intsec = np.maximum (0, (np.minimum(a[3], b[3]) -
+        np.maximum(a[1], b[1])))
     s_intsec = w_intsec * h_intsec
     s_a = (a[2] - a[0])*(a[3] - a[1])
     s_b = (b[2] - b[0])*(b[3] - b[1])
@@ -79,11 +81,13 @@ class Tracker(): # class for Kalman Filter-based tracker
 
         # Initialize the measurement covariance
         self.R_scaler = 1.0
-        self.R_diag_array = self.R_scaler * np.array([self.L, self.L, self.L, self.L])
+        self.R_diag_array = self.R_scaler * np.array([self.L, self.L,
+            self.L, self.L])
         self.R = np.diag(self.R_diag_array)
 
 
-        # Attributes to draw an line track and know if the increase or decree the area size.
+        # Attributes to draw an line track and know if the increase
+        # or decree the area size.
         self.center = np.array([])
         self.w = 0
         self.h = 0
@@ -97,8 +101,12 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.angle = []
         self.angles = []
 
+        self.class_id = None
+        self.score = None
+
     def update_R(self):
-        R_diag_array = self.R_scaler * np.array([self.L, self.L, self.L, self.L])
+        R_diag_array = self.R_scaler * np.array([self.L, self.L,
+            self.L, self.L])
         self.R = np.diag(R_diag_array)
 
     def add_box(self, box):
@@ -193,8 +201,8 @@ class Tracker(): # class for Kalman Filter-based tracker
 
     def kalman_filter(self, z):
         '''
-        Implement the Kalman Filter, including the predict and the update stages,
-        with the measurement z
+        Implement the Kalman Filter, including the predict and the update
+        stages,with the measurement z
         '''
         x = self.x_state
         # Predict
@@ -212,8 +220,8 @@ class Tracker(): # class for Kalman Filter-based tracker
 
     def predict_only(self):
         '''
-        Implment only the predict stage. This is used for unmatched detections and
-        unmatched tracks
+        Implment only the predict stage. This is used for unmatched detections
+        and unmatched tracks
         '''
         x = self.x_state
         # Predict
@@ -223,8 +231,8 @@ class Tracker(): # class for Kalman Filter-based tracker
 
 def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
     '''
-    From current list of trackers and new detections, output matched detections,
-    unmatchted trackers, unmatched detections.
+    From current list of trackers and new detections, output matched
+    detections, unmatchted trackers, unmatched detections.
     '''
 
     IOU_mat= np.zeros((len(trackers),len(detections)),dtype=np.float32)
@@ -269,16 +277,19 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
     else:
         matches = np.concatenate(matches,axis=0)
 
-    return matches, np.array(unmatched_detections), np.array(unmatched_trackers)
+    return matches, np.array(unmatched_detections),
+        np.array(unmatched_trackers)
 
-def detector(img, yolo, max_age, min_hits, tracker_list,
-    track_id_list, cut_img=None):
+# tracker_list: Es una lista con objetos de tipo Tracker
+def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
+    cut_img=None, out_csv=None):
 
     img_process = np.copy(img)
     if cut_img is not None:
         img_process = img[cut_img[0]:cut_img[1], cut_img[2]:cut_img[3]]
 
-    coors, scores, classes = utils.get_bboxes(yolo, img_process, score_threshold=0.7)
+    coors, scores, classes = utils.get_bboxes(yolo, img_process,
+        score_threshold=0.7)
     z_box = utils.move_x_to_y(coors)
 
     if cut_img is not None and len(z_box) > 0:
@@ -289,13 +300,16 @@ def detector(img, yolo, max_age, min_hits, tracker_list,
         plus_cut[3] += cut_img[2]
         z_box = plus_cut.T
 
+    # Contine solo las bbox de los objetos Tracker.
     x_box =[]
 
     if len(tracker_list) > 0:
         for trk in tracker_list:
             x_box.append(trk.box)
 
-    matched, unmatched_dets, unmatched_trks = assign_detections_to_trackers(x_box, z_box, iou_thrd = 0.3)
+    matched, unmatched_dets, unmatched_trks = assign_detections_to_trackers(
+            box, z_box, iou_thrd = 0.3
+        )
 
     # Deal with matched detections
     if matched.size >0:
@@ -303,6 +317,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list,
             z = z_box[det_idx]
             z = np.expand_dims(z, axis=0).T
             tmp_trk= tracker_list[trk_idx]
+            tmp_trk.score = scores[det_idx]
             tmp_trk.kalman_filter(z)
             xx = tmp_trk.x_state.T[0].tolist()
             xx =[xx[0], xx[2], xx[4], xx[6]]
@@ -317,6 +332,8 @@ def detector(img, yolo, max_age, min_hits, tracker_list,
             z = z_box[idx]
             z = np.expand_dims(z, axis=0).T
             tmp_trk = Tracker() # Create a new tracker
+            tmp_trk.class_id = classes[idx]
+            tmp_trk.score = scores[idx]
             x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
             tmp_trk.x_state = x
             tmp_trk.predict_only()
@@ -348,6 +365,8 @@ def detector(img, yolo, max_age, min_hits, tracker_list,
         #    str(len(classes)), trk.hits, min_hits, trk.no_losses, max_age))
         if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
              good_tracker_list.append(trk)
+             if out_csv is not None:
+                save_trk(trk, out_csv)
              img = utils.draw_tracker(img, trk)
     # Book keeping
     deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
@@ -358,28 +377,45 @@ def detector(img, yolo, max_age, min_hits, tracker_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def detection(video_path, yolo, cut_img=None, video_out=None):
+def save_trk(trk, file_name):
+    with open(file_name, "a+") as f:
+        f.write("{},{},{},{}\n"
+            .format(",".join(map(str, trk.angle)), trk.roc, trk.class_id,
+                trk.score
+            )
+        )
+
+def detection(video_path, yolo, cut_img=None, video_out=None, show=True,
+    out_csv=None):
     max_age = 4
     min_hits = 1
     tracker_list =[]
-    track_id_list = deque(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'])
+    track_id_list = deque(['A', 'B', 'C', 'D', 'E', 'F', 'G',
+        'H', 'I', 'J', 'K'])
     vid = cv2.VideoCapture(video_path)
 
     ret, img = vid.read()
 
     if video_out is not None:
-        out = cv2.VideoWriter(video_out, cv2.VideoWriter_fourcc(*'mp4v'), 60, (1920,1080))
+        fps = vid.get(cv2.CAP_PROP_FPS)
+        width  = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print("FPS: {}, Width: {}, Height: {}".format(fps, width, height))
+        out = cv2.VideoWriter(video_out, cv2.VideoWriter_fourcc(*'mp4v'),
+                fps, (width, height)
+            )
 
     while ret:
         img = detector(img, yolo, max_age,
-            min_hits, tracker_list, track_id_list, cut_img)
+            min_hits, tracker_list, track_id_list, cut_img, out_csv)
 
         if video_out is not None:
             out.write(img)
 
-        cv2.imshow('Testing', img)
+        if show:
+            cv2.imshow('Testing', img)
         ret, img = vid.read()
-        if cv2.waitKey(25) & 0xFF == ord("q"):
+        if show and (cv2.waitKey(25) & 0xFF == ord("q")):
             vid.release()
             cv2.destroyAllWindows()
             break
