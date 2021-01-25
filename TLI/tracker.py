@@ -375,9 +375,9 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
 
 def save_trk(trk, file_name):
     with open(file_name, "a+") as f:
-        f.write("{},{},{},{}\n"
-            .format(",".join(map(str, trk.angle)), trk.roc, trk.class_id,
-                trk.score
+        f.write("{},{:.3f},{},{:.3f}\n"
+            .format(",".join(map(lambda x: "{:.3f}".format(x), trk.angle)),
+                trk.roc, trk.class_id, trk.score
             )
         )
 
