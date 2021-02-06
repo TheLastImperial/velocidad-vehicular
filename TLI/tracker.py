@@ -34,7 +34,7 @@ def box_iou2(a, b):
     return c/d
 
 class Tracker(): # class for Kalman Filter-based tracker
-    def __init__(self):
+    def __init__(self, x_limits, fps=30):
         # Initialize parametes for tracker (history)
         self.id = 0  # tracker's id
 
@@ -104,6 +104,11 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.class_id = None
         self.score = None
 
+        self.x_limits = x_limits
+        self.limits_ind = [None, None]
+        self.fps = fps
+        self.saved = False
+
     def update_R(self):
         R_diag_array = self.R_scaler * np.array([self.L, self.L,
             self.L, self.L])
@@ -134,9 +139,15 @@ class Tracker(): # class for Kalman Filter-based tracker
             self.roc = float(ant - act) / (float(ant) + 0.000001)
         self.rocs.append(self.roc)
 
-        self.straight, self.angle = self.__gen_straight()
+        self.straight, self.angle = self.gen_straight()
         self.straights.append(self.straight)
         self.angles.append(self.angle)
+
+        # if self.x_limits is not None:
+        if self.limits_ind[0] is None and left >= self.x_limits[0]:
+            self.limits_ind[0] = len(self.areas) - 1
+        elif self.limits_ind[1] is None and right >= self.x_limits[1]:
+            self.limits_ind[1] = len(self.areas) - 1
 
     # This method return the track but with a jump intervale.
     # For example:
@@ -156,8 +167,11 @@ class Tracker(): # class for Kalman Filter-based tracker
 
     # This method generate the straight and the angles to
     # the current track.
-    def __gen_straight(self):
-        track = np.array(self.track)
+    def gen_straight(self, limits = None):
+        if limits is None:
+            track = np.array(self.track)
+        else:
+            track = np.array(self.track[limits[0]:limits[1]])
         x = track.T[0]
         y = track.T[1]
 
@@ -278,7 +292,7 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
 
 # tracker_list: Es una lista con objetos de tipo Tracker
 def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
-    cut_img=None, out_csv=None):
+    x_limits, fps, cut_img=None, out_csv=None, counter=0):
 
     img_process = np.copy(img)
     if cut_img is not None:
@@ -327,7 +341,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
         for idx in unmatched_dets:
             z = z_box[idx]
             z = np.expand_dims(z, axis=0).T
-            tmp_trk = Tracker() # Create a new tracker
+            tmp_trk = Tracker(x_limits=x_limits, fps=fps) # Create a new tracker
             tmp_trk.class_id = classes[idx]
             tmp_trk.score = scores[idx]
             x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
@@ -362,7 +376,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
         if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
              good_tracker_list.append(trk)
              if out_csv is not None:
-                save_trk(trk, out_csv)
+                save_trk(trk, out_csv, counter, tracker_list)
              img = utils.draw_tracker(img, trk)
     # Book keeping
     deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
@@ -373,16 +387,27 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def save_trk(trk, file_name):
+def save_trk(trk, file_name, counter, tracker_list):
+    if trk.limits_ind[0] is None or \
+            trk.limits_ind[1] is None \
+        or trk.saved:
+        return
+
+    trk.saved = True
+    _, angle = trk.gen_straight(trk.limits_ind)
+    roc = np.average(trk.rocs[trk.limits_ind[0]:trk.limits_ind[1]])
+    time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.fps
+
+    # Angle1, Angle2, roc, time, score, class
     with open(file_name, "a+") as f:
-        f.write("{},{:.3f},{},{:.3f}\n"
-            .format(",".join(map(lambda x: "{:.3f}".format(x), trk.angle)),
-                trk.roc, trk.class_id, trk.score
+        f.write("{},{:.3f},{:.3f},{:.3f},{}\n"
+            .format(",".join(map(lambda x: "{:.3f}".format(x), angle)),
+                roc, time, trk.score, trk.class_id
             )
         )
 
-def detection(video_path, yolo, cut_img=None, video_out=None, show=True,
-    out_csv=None):
+def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
+    show=True, out_csv=None):
     max_age = 4
     min_hits = 1
     tracker_list =[]
@@ -391,9 +416,9 @@ def detection(video_path, yolo, cut_img=None, video_out=None, show=True,
     vid = cv2.VideoCapture(video_path)
 
     ret, img = vid.read()
+    fps = vid.get(cv2.CAP_PROP_FPS)
 
     if video_out is not None:
-        fps = vid.get(cv2.CAP_PROP_FPS)
         width  = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
         print("FPS: {}, Width: {}, Height: {}".format(fps, width, height))
@@ -401,9 +426,19 @@ def detection(video_path, yolo, cut_img=None, video_out=None, show=True,
                 fps, (width, height)
             )
 
+    counter = 1
+
     while ret:
-        img = detector(img, yolo, max_age,
-            min_hits, tracker_list, track_id_list, cut_img, out_csv)
+        img = detector(img, yolo, max_age, min_hits,
+            tracker_list, track_id_list, x_limits, fps,
+            cut_img, out_csv, counter)
+        counter += 1
+        if x_limits is not None:
+            cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
+                (255,0,0),1)
+
+            cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
+                (255,0,0),1)
 
         if video_out is not None:
             out.write(img)
