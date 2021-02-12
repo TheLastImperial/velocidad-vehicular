@@ -292,7 +292,7 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
 
 # tracker_list: Es una lista con objetos de tipo Tracker
 def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
-    x_limits, fps, cut_img=None, out_csv=None, counter=0):
+    x_limits, fps, cut_img=None, out_csv=None):
 
     img_process = np.copy(img)
     if cut_img is not None:
@@ -376,7 +376,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
         if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
              good_tracker_list.append(trk)
              if out_csv is not None:
-                save_trk(trk, out_csv, counter, tracker_list)
+                save_trk(trk, out_csv, tracker_list)
              img = utils.draw_tracker(img, trk)
     # Book keeping
     deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
@@ -387,22 +387,25 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def save_trk(trk, file_name, counter, tracker_list):
+def save_trk(trk, file_name, tracker_list):
     if trk.limits_ind[0] is None or \
             trk.limits_ind[1] is None \
         or trk.saved:
         return
 
     trk.saved = True
-    _, angle = trk.gen_straight(trk.limits_ind)
-    roc = np.average(trk.rocs[trk.limits_ind[0]:trk.limits_ind[1]])
+    _, angle1 = trk.gen_straight([0,trk.limits_ind[0]])
+    _, angle2 = trk.gen_straight(trk.limits_ind)
+    area1 = trk.areas[trk.limits_ind[0]]
+    area2 = trk.areas[trk.limits_ind[1]]
     time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.fps
 
-    # Angle1, Angle2, roc, time, score, class
+    # Angle1A, Angle1B, Angle2A, Angle2B, area1, area2, fps, time, score, class
     with open(file_name, "a+") as f:
-        f.write("{},{:.3f},{:.3f},{:.3f},{}\n"
-            .format(",".join(map(lambda x: "{:.3f}".format(x), angle)),
-                roc, time, trk.score, trk.class_id
+        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{}\n"
+            .format(",".join(map(lambda x: "{:.3f}".format(x), angle1)),
+                ",".join(map(lambda x: "{:.3f}".format(x), angle2)),
+                area1, area2, trk.fps, time, trk.score, trk.class_id
             )
         )
 
@@ -426,19 +429,20 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
                 fps, (width, height)
             )
 
-    counter = 1
-
+    left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
     while ret:
         img = detector(img, yolo, max_age, min_hits,
             tracker_list, track_id_list, x_limits, fps,
-            cut_img, out_csv, counter)
-        counter += 1
+            cut_img, out_csv)
         if x_limits is not None:
             cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
                 (255,0,0),1)
 
             cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
                 (255,0,0),1)
+
+        if cut_img is not None:
+            cv2.rectangle(img, (top, left),(bottom, right), (0, 0, 255), 1)
 
         if video_out is not None:
             out.write(img)
