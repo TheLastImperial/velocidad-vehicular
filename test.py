@@ -1,17 +1,23 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-
-import cv2
-import numpy as np
 import tensorflow as tf
-
 
 from YOLO.configs import *
 from YOLO.utils import Load_Yolo_model
-from TLI.utils import detect_video, show_video, get_bboxes
-
 from TLI.tracker import detection
 
+path = "resources/test/20210219.mp4"
+
 yolo = Load_Yolo_model()
-detection("./resources/resize/30_hd.mp4", yolo)
+detection(path, yolo,
+    [500, 1200],
+    cut_img=[200, 900, 100, 1500],
+    # video_out="test_v.mp4",
+    show=True,
+    out_csv=True,
+    set_time=True)
+
+# from TLI.utils import show_limits
+
+# show_limits(path, [500, 1200], [200, 900, 100, 1500])

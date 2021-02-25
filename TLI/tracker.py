@@ -34,7 +34,7 @@ def box_iou2(a, b):
     return c/d
 
 class Tracker(): # class for Kalman Filter-based tracker
-    def __init__(self, x_limits, fps=30):
+    def __init__(self, x_limits, g_vars):
         # Initialize parametes for tracker (history)
         self.id = 0  # tracker's id
 
@@ -106,7 +106,7 @@ class Tracker(): # class for Kalman Filter-based tracker
 
         self.x_limits = x_limits
         self.limits_ind = [None, None]
-        self.fps = fps
+        self.g_vars = g_vars
         self.saved = False
 
     def update_R(self):
@@ -172,6 +172,8 @@ class Tracker(): # class for Kalman Filter-based tracker
             track = np.array(self.track)
         else:
             track = np.array(self.track[limits[0]:limits[1]])
+        if(len(track) == 0):
+            return np.array([0]), [0, 0]
         x = track.T[0]
         y = track.T[1]
 
@@ -292,7 +294,8 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
 
 # tracker_list: Es una lista con objetos de tipo Tracker
 def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
-    x_limits, fps, cut_img=None, out_csv=None):
+    x_limits, g_vars, cut_img=None, out_csv=False
+    ):
 
     img_process = np.copy(img)
     if cut_img is not None:
@@ -341,7 +344,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
         for idx in unmatched_dets:
             z = z_box[idx]
             z = np.expand_dims(z, axis=0).T
-            tmp_trk = Tracker(x_limits=x_limits, fps=fps) # Create a new tracker
+            tmp_trk = Tracker(x_limits=x_limits, g_vars=g_vars) # Create a new tracker
             tmp_trk.class_id = classes[idx]
             tmp_trk.score = scores[idx]
             x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
@@ -375,9 +378,9 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
         #    str(len(classes)), trk.hits, min_hits, trk.no_losses, max_age))
         if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
              good_tracker_list.append(trk)
-             if out_csv is not None:
-                save_trk(trk, out_csv, tracker_list)
              img = utils.draw_tracker(img, trk)
+             if out_csv:
+                save_trk(trk, tracker_list, img=img)
     # Book keeping
     deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
 
@@ -387,30 +390,61 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def save_trk(trk, file_name, tracker_list):
+def save_trk(trk, tracker_list, img=None):
+    # Garantiza que ya se tenga la imagen de entrada y salida.
     if trk.limits_ind[0] is None or \
             trk.limits_ind[1] is None \
         or trk.saved:
         return
 
+    if len(trk.g_vars["seconds"]) == 0:
+        return
+
+    r_time = utils.get_seconds_from_fps(
+        trk.g_vars["f_count"], trk.g_vars["fps"]
+    )
+
+    if int(r_time) <= trk.g_vars["seconds"][0][0]:
+        return
+
     trk.saved = True
     _, angle1 = trk.gen_straight([0,trk.limits_ind[0]])
     _, angle2 = trk.gen_straight(trk.limits_ind)
+
+    if angle1[0] == 0 or angle1[1] == 0 or \
+        angle2[0] == 0 or angle2[1] == 0:
+        return
+
     area1 = trk.areas[trk.limits_ind[0]]
     area2 = trk.areas[trk.limits_ind[1]]
-    time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.fps
+    time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.g_vars["fps"]
 
+
+    file_name = "{}/{}.csv".format(
+        trk.g_vars["root_path"],
+        trk.g_vars["file_name"]
+    )
     # Angle1A, Angle1B, Angle2A, Angle2B, area1, area2, fps, time, score, class
     with open(file_name, "a+") as f:
-        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{}\n"
+        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{},{},{},{}\n"
             .format(",".join(map(lambda x: "{:.3f}".format(x), angle1)),
                 ",".join(map(lambda x: "{:.3f}".format(x), angle2)),
-                area1, area2, trk.fps, time, trk.score, trk.class_id
+                area1, area2, trk.g_vars["fps"], time, trk.score, trk.class_id,
+                trk.g_vars["seconds"][0][1],
+                ",".join(map(str,trk.box)), trk.g_vars["f_count"]
             )
         )
+    if img is not None:
+        utils.draw_all_boxes(img, [trk.box], box_color=(255,255,255))
+        cv2.imwrite(
+            "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
+            img
+        )
+
+    del trk.g_vars["seconds"][0]
 
 def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
-    show=True, out_csv=None):
+    show=True, out_csv=False, set_time=False):
     max_age = 4
     min_hits = 1
     tracker_list =[]
@@ -430,10 +464,39 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
             )
 
     left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
+
+    if set_time:
+        import time
+        start_time = time.time()
+
+    root_path = video_path.split("/")
+    name = root_path[-1].split(".")[0]
+    root_path = "/".join(root_path[:-1])
+
+    seconds_file = utils.csv_to_list("{}/{}.txt".format(root_path, name))
+
+    g_vars = {
+        "fps": fps,
+        "f_count": 1,
+        "seconds": seconds_file,
+        "file_name": name,
+        "root_path": root_path
+    }
+
     while ret:
         img = detector(img, yolo, max_age, min_hits,
-            tracker_list, track_id_list, x_limits, fps,
+            tracker_list, track_id_list, x_limits, g_vars,
             cut_img, out_csv)
+
+        if set_time:
+            seconds = time.time() - start_time
+            utils.set_time_str(img, seconds)
+            seconds = utils.get_seconds_from_fps(g_vars["f_count"], g_vars["fps"])
+            utils.set_time_str(img, seconds, pos=(30, 60))
+            utils.set_text(img, "FPS: {:.3f}, Current Frame: {}"
+                .format(g_vars["fps"], g_vars["f_count"]), pos=(30, 90)
+            )
+
         if x_limits is not None:
             cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
                 (255,0,0),1)
@@ -454,6 +517,7 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
             vid.release()
             cv2.destroyAllWindows()
             break
+        g_vars["f_count"] += 1
 
     if video_out is not None:
         out.release()

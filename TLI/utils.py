@@ -185,3 +185,45 @@ def show_video(video_path):
 
     cv2.destroyAllWindows()
 
+def get_seconds_from_fps(current_frame, fps):
+    return current_frame / float(fps)
+
+def set_time_str(img, seconds, font = cv2.FONT_HERSHEY_SIMPLEX,
+    font_size = 0.7, font_color = (0, 0, 0), pos=(30, 30)):
+
+    mils = "000" + str(int(seconds * 1000))
+    secs = "00" + str(int(seconds%60))
+    mins = "00" + str(int(seconds/60))
+    time_str = "{}:{}:{}".format(mins[-2:], secs[-2:], mils[-3:])
+
+    set_text(img, time_str, font = font,
+        font_size = font_size, font_color = font_color, pos=pos)
+
+def set_text(img, txt, font = cv2.FONT_HERSHEY_SIMPLEX,
+    font_size = 0.7, font_color = (0, 0, 0), pos=(30, 30)):
+    cv2.putText(img, txt, pos,
+                font, font_size, font_color, 1, cv2.LINE_AA)
+
+def csv_to_list(path):
+    result = []
+    with open(path, "r") as f:
+        for line in f:
+            result.append(list(map(float, line.split(","))))
+    return result
+
+def show_limits(path, x_limits, cut_img):
+    vid = cv2.VideoCapture(path)
+    _, img = vid.read()
+
+    # x_limits = [500, 1200]
+    # cut_img=[200, 900, 100, 1500]
+    left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
+    cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
+        (255,0,0),1)
+    cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
+        (255,0,0),1)
+    cv2.rectangle(img, (top, left),(bottom, right), (0, 0, 255), 1)
+
+    cv2.imshow("Limits", img)
+    cv2.waitKey(0)
+    vid.release()
