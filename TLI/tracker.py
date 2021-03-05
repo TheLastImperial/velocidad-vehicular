@@ -424,12 +424,14 @@ def save_trk(trk, tracker_list, img=None):
         trk.g_vars["root_path"],
         trk.g_vars["file_name"]
     )
-    # Angle1A, Angle1B, Angle2A, Angle2B, area1, area2, fps, time, score, class
+    # Angle1A, Angle1B, Angle2A, Angle2B, area1, area2, fps, width, height,
+    # time, score, class, bbox, frame counter
     with open(file_name, "a+") as f:
-        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{},{},{},{}\n"
+        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{}\n"
             .format(",".join(map(lambda x: "{:.3f}".format(x), angle1)),
                 ",".join(map(lambda x: "{:.3f}".format(x), angle2)),
-                area1, area2, trk.g_vars["fps"], time, trk.score, trk.class_id,
+                area1, area2, trk.g_vars["fps"], trk.g_vars["width"],
+                trk.g_vars["height"], time, trk.score, trk.class_id,
                 trk.g_vars["seconds"][0][1],
                 ",".join(map(str,trk.box)), trk.g_vars["f_count"]
             )
@@ -473,17 +475,25 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
     name = root_path[-1].split(".")[0]
     root_path = "/".join(root_path[:-1])
 
-    seconds_file = utils.csv_to_list("{}/{}.txt".format(root_path, name))
+    seconds_file = None
+    if out_csv:
+        seconds_file = utils.csv_to_list("{}/{}.txt".format(root_path, name))
 
     g_vars = {
         "fps": fps,
         "f_count": 1,
         "seconds": seconds_file,
         "file_name": name,
-        "root_path": root_path
+        "root_path": root_path,
+        "width": int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
+        "height": int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
     }
 
     while ret:
+        if seconds_file is not None and len(seconds_file) == 0:
+            vid.release()
+            cv2.destroyAllWindows()
+            break
         img = detector(img, yolo, max_age, min_hits,
             tracker_list, track_id_list, x_limits, g_vars,
             cut_img, out_csv)
