@@ -211,18 +211,27 @@ def csv_to_list(path):
             result.append(list(map(float, line.split(","))))
     return result
 
+def draw_limits_area(img, x_limits=None, area=None, limits_color=(255,0,0),
+    area_color=(0, 0, 255)):
+    # x_limits: X1, X2
+    # x_limits = [500, 1200]
+    # area: left, right, top, bottom
+    # area=[200, 900, 100, 1500]
+    if x_limits is not None:
+        cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
+            limits_color,1)
+        cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
+            limits_color, 1)
+    if area is not None:
+        left, right, top, bottom = area[0], area[1], area[2], area[3]
+        cv2.rectangle(img, (top, left),(bottom, right), area_color, 1)
+
+
 def show_limits(path, x_limits, cut_img):
     vid = cv2.VideoCapture(path)
     _, img = vid.read()
 
-    # x_limits = [500, 1200]
-    # cut_img=[200, 900, 100, 1500]
-    left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
-    cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
-        (255,0,0),1)
-    cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
-        (255,0,0),1)
-    cv2.rectangle(img, (top, left),(bottom, right), (0, 0, 255), 1)
+    draw_limits_area(img, x_limits, cut_img)
 
     cv2.imshow("Limits", img)
     cv2.waitKey(0)

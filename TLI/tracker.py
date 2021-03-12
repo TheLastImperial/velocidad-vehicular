@@ -12,6 +12,7 @@ from scipy.optimize import linear_sum_assignment
 import cv2
 
 from TLI import utils
+from TLI import preprocess as prep
 def box_iou2(a, b):
     '''
     Helper funciton to calculate the ratio between intersection
@@ -437,10 +438,13 @@ def save_trk(trk, tracker_list, img=None):
             )
         )
     if img is not None:
-        utils.draw_all_boxes(img, [trk.box], box_color=(255,255,255))
+        img2 = np.copy(img)
+        utils.draw_limits_area(img2, x_limits=trk.x_limits,
+            area=trk.g_vars["area"])
+        utils.draw_all_boxes(img2, [trk.box], box_color=(255,255,255))
         cv2.imwrite(
             "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
-            img
+            img2
         )
 
     del trk.g_vars["seconds"][0]
@@ -465,8 +469,6 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
                 fps, (width, height)
             )
 
-    left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
-
     if set_time:
         import time
         start_time = time.time()
@@ -477,7 +479,7 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
 
     seconds_file = None
     if out_csv:
-        seconds_file = utils.csv_to_list("{}/{}.txt".format(root_path, name))
+        seconds_file = prep.csv_to_list("{}/{}.txt".format(root_path, name))
 
     g_vars = {
         "fps": fps,
@@ -486,7 +488,8 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
         "file_name": name,
         "root_path": root_path,
         "width": int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        "height": int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        "height": int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        "area": cut_img
     }
 
     while ret:
@@ -507,15 +510,7 @@ def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
                 .format(g_vars["fps"], g_vars["f_count"]), pos=(30, 90)
             )
 
-        if x_limits is not None:
-            cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
-                (255,0,0),1)
-
-            cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
-                (255,0,0),1)
-
-        if cut_img is not None:
-            cv2.rectangle(img, (top, left),(bottom, right), (0, 0, 255), 1)
+        utils.draw_limits_area(img, x_limits=x_limits, area=cut_img)
 
         if video_out is not None:
             out.write(img)
