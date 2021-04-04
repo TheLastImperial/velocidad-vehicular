@@ -189,12 +189,13 @@ def get_seconds_from_fps(current_frame, fps):
     return current_frame / float(fps)
 
 def set_time_str(img, seconds, font = cv2.FONT_HERSHEY_SIMPLEX,
-    font_size = 0.7, font_color = (0, 0, 0), pos=(30, 30)):
+    font_size = 0.7, font_color = (0, 0, 0), pos=(30, 30), pre_txt = "",
+    ):
 
     mils = "000" + str(int(seconds * 1000))
     secs = "00" + str(int(seconds%60))
     mins = "00" + str(int(seconds/60))
-    time_str = "{}:{}:{}".format(mins[-2:], secs[-2:], mils[-3:])
+    time_str = "{}{}:{}:{}".format(pre_txt, mins[-2:], secs[-2:], mils[-3:])
 
     set_text(img, time_str, font = font,
         font_size = font_size, font_color = font_color, pos=pos)
@@ -211,19 +212,76 @@ def csv_to_list(path):
             result.append(list(map(float, line.split(","))))
     return result
 
+def draw_limits_area(img, x_limits=None, area=None, limits_color=(255,0,0),
+    area_color=(0, 0, 255)):
+    # x_limits: X1, X2
+    # x_limits = [500, 1200]
+    # area: left, right, top, bottom
+    # area=[200, 900, 100, 1500]
+    if x_limits is not None:
+        cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
+            limits_color,1)
+        cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
+            limits_color, 1)
+    if area is not None:
+        left, right, top, bottom = area[0], area[1], area[2], area[3]
+        cv2.rectangle(img, (top, left),(bottom, right), area_color, 1)
+
+
 def show_limits(path, x_limits, cut_img):
     vid = cv2.VideoCapture(path)
     _, img = vid.read()
 
-    # x_limits = [500, 1200]
-    # cut_img=[200, 900, 100, 1500]
-    left, right, top, bottom = cut_img[0], cut_img[1], cut_img[2], cut_img[3]
-    cv2.line(img,(x_limits[0], 0),(x_limits[0], img.shape[0]),
-        (255,0,0),1)
-    cv2.line(img,(x_limits[1], 0),(x_limits[1], img.shape[0]),
-        (255,0,0),1)
-    cv2.rectangle(img, (top, left),(bottom, right), (0, 0, 255), 1)
+    draw_limits_area(img, x_limits, cut_img)
 
     cv2.imshow("Limits", img)
     cv2.waitKey(0)
     vid.release()
+
+
+def box_iou2(a, b):
+    '''
+    Helper funciton to calculate the ratio between intersection
+    and the union of two boxes a and b
+    a[0], a[1], a[2], a[3] <-> left, up, right, bottom
+    '''
+
+    w_intsec = np.maximum (0, (np.minimum(a[2], b[2]) -
+        np.maximum(a[0], b[0])))
+    h_intsec = np.maximum (0, (np.minimum(a[3], b[3]) -
+        np.maximum(a[1], b[1])))
+    s_intsec = w_intsec * h_intsec
+    s_a = (a[2] - a[0])*(a[3] - a[1])
+    s_b = (b[2] - b[0])*(b[3] - b[1])
+
+    c = float(s_intsec)
+    d = (s_a + s_b -s_intsec)
+    if d == 0:
+        return 0
+    return c/d
+
+def cut_img(img, arr):
+    return img[arr[0]:arr[1], arr[2]:arr[3]]
+
+# Limpia las predicciones y las coloca en terminos absolutos
+def post_prediction(prediction, frame_size, score = 0.70, cut_img=None):
+    out_boxes, out_scores, out_classes, num_boxes = prediction
+    img_h, img_w = frame_size
+    ind = np.where(out_scores[0] >= score)
+
+    boxes = out_boxes[:,ind][0][0]
+    scores = out_scores[:,ind][0][0]
+    classes = out_classes[:,ind][0][0]
+
+    boxes[:,0] *= img_h
+    boxes[:,2] *= img_h
+    boxes[:,1] *= img_w
+    boxes[:,3] *= img_w
+
+    if cut_img is not None:
+        boxes[:,0] += cut_img[0]
+        boxes[:,1] += cut_img[2]
+        boxes[:,2] += cut_img[0]
+        boxes[:,3] += cut_img[2]
+    boxes = boxes.astype(np.int)
+    return [boxes, scores, classes]
