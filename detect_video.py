@@ -32,7 +32,7 @@ flags.DEFINE_string('video', './data/video/video.mp4', 'path to input video or s
 flags.DEFINE_string('output', None, 'path to output video')
 flags.DEFINE_string('output_format', 'mp4v', 'codec used in VideoWriter when saving video to file')
 flags.DEFINE_float('iou', 0.45, 'iou threshold')
-flags.DEFINE_float('score', 0.25, 'score threshold')
+flags.DEFINE_float('score', 0.75, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_multi_integer('c_img', None, 'Cut image by an given size.')
 flags.DEFINE_multi_integer('x_lim', None, 'Limits to detections in X axis.')
@@ -84,7 +84,8 @@ def main(_argv):
         "file_name": name,
         "root_path": root_path,
         "width": int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        "height": int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        "height": int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        "c_img": FLAGS.c_img
     }
 
     out = None
@@ -156,30 +157,31 @@ def main(_argv):
             FLAGS.x_lim, g_vars, cut_img=FLAGS.c_img, out_csv=False
         )
 
-        image = np.copy(frame)
-        for trk in good_tracker_list:
-            TLI_utils.draw_tracker(image, trk)
-            if FLAGS.csv:
-                save_trk(trk, tracker_list, image)
+        result = np.asarray(frame)
+        cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
+        result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
 
-        TLI_utils.draw_limits_area(image, FLAGS.x_lim, FLAGS.c_img)
+        for trk in good_tracker_list:
+            TLI_utils.draw_tracker(result, trk)
+            if FLAGS.csv:
+                save_trk(trk, tracker_list, result)
+
+        TLI_utils.draw_limits_area(result, FLAGS.x_lim, FLAGS.c_img)
 
         if FLAGS.time:
             fps = 1.0 / (time.time() - start_time)
             seconds = time.time() - start_time_r
 
-            TLI_utils.set_time_str(image, seconds, pre_txt="Precess Time: ")
+            TLI_utils.set_time_str(result, seconds, pre_txt="Precess Time: ")
             seconds = TLI_utils.get_seconds_from_fps(g_vars["f_count"], g_vars["fps"])
-            TLI_utils.set_time_str(image, seconds, pos=(30, 60),
+            TLI_utils.set_time_str(result, seconds, pos=(30, 60),
                 pre_txt="Real Time: ")
-            TLI_utils.set_text(image, "FPS: {:.3f}, Current Frame: {}"
+            TLI_utils.set_text(result, "FPS: {:.3f}, Current Frame: {}"
                 .format(g_vars["fps"], g_vars["f_count"]), pos=(30, 90)
             )
-            TLI_utils.set_text(image, "FPS P: {}".format(fps), pos=(30, 120))
+            TLI_utils.set_text(result, "FPS P: {}".format(fps), pos=(30, 120))
 
-        result = np.asarray(image)
-        cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
-        result = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
 
         if not FLAGS.dont_show:
             cv2.imshow("result", result)

@@ -496,10 +496,12 @@ def save_trk(trk, tracker_list, img=None):
             )
         )
     if img is not None:
-        utils.draw_all_boxes(img, [trk.box], box_color=(255,255,255))
+        img_w = np.copy(img)
+        utils.draw_all_boxes(img_w, [trk.box], box_color=(255,255,255))
+        utils.draw_limits_area(img_w, trk.x_limits, trk.g_vars["c_img"])
         cv2.imwrite(
             "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
-            img
+            img_w
         )
 
     del trk.g_vars["seconds"][0]
