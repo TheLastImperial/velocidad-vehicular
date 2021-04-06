@@ -29,7 +29,7 @@ flags.DEFINE_integer('size', 416, 'resize images to')
 flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
 flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
 flags.DEFINE_string('video', './data/video/video.mp4', 'path to input video or set to 0 for webcam')
-flags.DEFINE_string('output', None, 'path to output video')
+flags.DEFINE_boolean('output', False, 'Save the video result')
 flags.DEFINE_string('output_format', 'mp4v', 'codec used in VideoWriter when saving video to file')
 flags.DEFINE_float('iou', 0.45, 'iou threshold')
 flags.DEFINE_float('score', 0.75, 'score threshold')
@@ -50,11 +50,12 @@ def main(_argv):
     input_size = FLAGS.size
     video_path = FLAGS.video
 
+    root_path = video_path.split("/")
+    name = root_path[-1].split(".")[0]
+    root_path = "/".join(root_path[:-1])
+
     seconds_file = None
     if FLAGS.csv:
-        root_path = video_path.split("/")
-        name = root_path[-1].split(".")[0]
-        root_path = "/".join(root_path[:-1])
         seconds_file = TLI_utils.csv_to_list("{}/{}.txt".format(root_path, name))
 
     tracker_list =[]
@@ -78,7 +79,7 @@ def main(_argv):
         vid = cv2.VideoCapture(video_path)
 
     g_vars = {
-        "fps": int(vid.get(cv2.CAP_PROP_FPS)),
+        "fps": vid.get(cv2.CAP_PROP_FPS),
         "f_count": 1,
         "seconds": seconds_file,
         "file_name": name,
@@ -91,10 +92,11 @@ def main(_argv):
     out = None
 
     if FLAGS.output:
+        output_name = "{}/{}_res.mp4".format(root_path, name)
         # by default VideoCapture returns float instead of int
         width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(vid.get(cv2.CAP_PROP_FPS))
+        fps = vid.get(cv2.CAP_PROP_FPS)
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
@@ -158,7 +160,6 @@ def main(_argv):
         )
 
         result = np.asarray(frame)
-        cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
         result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
 
         for trk in good_tracker_list:

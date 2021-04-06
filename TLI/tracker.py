@@ -87,7 +87,7 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.x_limits = x_limits
         self.limits_ind = [None, None]
         self.g_vars = g_vars
-        self.saved = False
+        self.saved = [False, False]
 
     def update_R(self):
         R_diag_array = self.R_scaler * np.array([self.L, self.L,
@@ -124,9 +124,9 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.angles.append(self.angle)
 
         # if self.x_limits is not None:
-        if self.limits_ind[0] is None and left >= self.x_limits[0]:
+        if self.limits_ind[0] is None and self.center[0] >= self.x_limits[0]:
             self.limits_ind[0] = len(self.areas) - 1
-        elif self.limits_ind[1] is None and right >= self.x_limits[1]:
+        elif self.limits_ind[1] is None and self.center[0] >= self.x_limits[1]:
             self.limits_ind[1] = len(self.areas) - 1
 
     # This method return the track but with a jump intervale.
@@ -450,10 +450,23 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     return img
 
 def save_trk(trk, tracker_list, img=None):
+
+    if trk.limits_ind[0] is not None and \
+            trk.limits_ind[1] is None \
+        and not trk.saved[0] and img is not None:
+        img_w = np.copy(img)
+        utils.draw_all_boxes(img_w, [trk.box], box_color=(255,255,255))
+        utils.draw_limits_area(img_w, trk.x_limits, trk.g_vars["c_img"])
+        cv2.imwrite(
+            "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
+            img_w
+        )
+        trk.saved[0] = True
+
     # Garantiza que ya se tenga la imagen de entrada y salida.
     if trk.limits_ind[0] is None or \
             trk.limits_ind[1] is None \
-        or trk.saved:
+        or trk.saved[1]:
         return
 
     if len(trk.g_vars["seconds"]) == 0:
@@ -466,7 +479,7 @@ def save_trk(trk, tracker_list, img=None):
     if int(r_time) <= trk.g_vars["seconds"][0][0]:
         return
 
-    trk.saved = True
+    trk.saved[1] = True
     _, angle1 = trk.gen_straight([0,trk.limits_ind[0]])
     _, angle2 = trk.gen_straight(trk.limits_ind)
 
