@@ -60,7 +60,11 @@ def main(_argv):
 
     tracker_list =[]
     track_id_list = deque(['A', 'B', 'C', 'D', 'E', 'F', 'G',
-        'H', 'I', 'J', 'K'])
+        'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+        'S', 'T', 'U', 'V', 'X', 'Y', 'Z',
+        'A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1',
+        'H1', 'I1', 'J1', 'K1', 'L1', 'M1', 'N1', 'O1', 'P1', 'Q1', 'R1',
+        'S1', 'T1', 'U1', 'V1', 'X1', 'Y1', 'Z1'])
     good_tracker_list = []
 
     if FLAGS.framework == 'tflite':
@@ -98,7 +102,7 @@ def main(_argv):
         height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = vid.get(cv2.CAP_PROP_FPS)
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
-        out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
+        out = cv2.VideoWriter(output_name, codec, fps, (width, height))
 
     if FLAGS.time:
         start_time_r = time.time()

@@ -285,3 +285,12 @@ def post_prediction(prediction, frame_size, score = 0.70, cut_img=None):
         boxes[:,3] += cut_img[2]
     boxes = boxes.astype(np.int)
     return [boxes, scores, classes]
+
+def draw_triangule(hipotenusa, img, color=(0, 0, 0)):
+    pt1, pt2 = hipotenusa
+    c1 = np.array([np.array(pt1), np.array([pt1[0], pt1[1] + (pt2[1] - pt1[1])])])
+    c2 = np.array([np.array([pt1[0], pt1[1] + (pt2[1] - pt1[1])]), np.array(pt2)])
+
+    cv2.polylines(img, [hipotenusa], False, (0, 0, 0))
+    cv2.polylines(img, [c1], False, (0, 0, 0))
+    cv2.polylines(img, [c2], False, (0, 0, 0))
