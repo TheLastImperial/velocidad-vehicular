@@ -205,11 +205,17 @@ def set_text(img, txt, font = cv2.FONT_HERSHEY_SIMPLEX,
     cv2.putText(img, txt, pos,
                 font, font_size, font_color, 1, cv2.LINE_AA)
 
+def try_convert_to_float(x):
+    try:
+        return float(x)
+    except:
+        return -1.0
+
 def csv_to_list(path):
     result = []
     with open(path, "r") as f:
         for line in f:
-            result.append(list(map(float, line.split(","))))
+            result.append(list(map(try_convert_to_float, line.split(","))))
     return result
 
 def draw_limits_area(img, x_limits=None, area=None, limits_color=(255,0,0),
