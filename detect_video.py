@@ -38,8 +38,11 @@ flags.DEFINE_multi_integer('c_img', None, 'Cut image by an given size.')
 flags.DEFINE_multi_integer('x_lim', None, 'Limits to detections in X axis.')
 flags.DEFINE_boolean('time', False, 'Limits to detections in X axis.')
 flags.DEFINE_boolean('csv', False, 'Get an csv file with the video precessed.')
+flags.DEFINE_boolean('csv_save_last', False, 'Save the csv file when process end.')
 flags.DEFINE_integer('max_age', 4, 'Max life time to an tracker')
 flags.DEFINE_integer('min_hits', 1, 'Min times to set an tracker')
+flags.DEFINE_integer('start_frame', -1, 'Specific frame to start the process.')
+flags.DEFINE_integer('start_csv_line', -1, 'Specific line to process csv file.')
 
 
 def main(_argv):
@@ -107,6 +110,13 @@ def main(_argv):
     if FLAGS.time:
         start_time_r = time.time()
 
+    csv_result = []
+
+    if FLAGS.csv and FLAGS.start_frame >= 0 and FLAGS.start_csv_line >= 0:
+        vid.set(cv2.CAP_PROP_POS_FRAMES, FLAGS.start_frame)
+        g_vars["seconds"] = g_vars["seconds"][FLAGS.start_csv_line:]
+        g_vars["f_count"] = FLAGS.start_frame
+
     while True:
         return_value, frame = vid.read()
         if return_value:
@@ -165,13 +175,18 @@ def main(_argv):
 
         result = np.asarray(frame)
         result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+        TLI_utils.draw_limits_area(result, FLAGS.x_lim, FLAGS.c_img)
 
         for trk in good_tracker_list:
             TLI_utils.draw_tracker(result, trk)
             if FLAGS.csv:
-                save_trk(trk, tracker_list, result)
+                r = save_trk(trk,
+                    tracker_list,
+                    result,
+                    save_csv = not FLAGS.csv_save_last)
 
-        TLI_utils.draw_limits_area(result, FLAGS.x_lim, FLAGS.c_img)
+                if r is not None and FLAGS.csv_save_last:
+                    csv_result.append(r)
 
         if FLAGS.time:
             fps = 1.0 / (time.time() - start_time)
@@ -195,6 +210,22 @@ def main(_argv):
             out.write(result)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
         g_vars["f_count"] += 1
+
+    if FLAGS.csv and FLAGS.csv_save_last:
+
+        file_name = "{}/{}.csv".format(
+            trk.g_vars["root_path"],
+            trk.g_vars["file_name"]
+        )
+        with open(file_name, "a+") as f:
+            for result in csv_result:
+                line, img_r, img_path = result
+                if img_r is None:
+                    continue
+                f.write(line)
+                cv2.imwrite(img_path, img_r)
+
+
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':

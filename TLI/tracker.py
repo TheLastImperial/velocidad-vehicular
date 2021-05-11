@@ -463,7 +463,7 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def save_trk(trk, tracker_list, img=None):
+def save_trk(trk, tracker_list, img=None, save_csv=False):
 
     if trk.limits_ind[0] is not None and \
             trk.limits_ind[1] is None \
@@ -527,62 +527,78 @@ def save_trk(trk, tracker_list, img=None):
 
     time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.g_vars["fps"]
 
-    file_name = "{}/{}.csv".format(
-        trk.g_vars["root_path"],
-        trk.g_vars["file_name"]
-    )
+    # Set speed and lane in a variable
+    secs = trk.g_vars["seconds"][0]
+    speed_lane = ""
+    if len(secs) == 3:
+        speed_lane = "{},{}".format(secs[1], secs[2])
+    else:
+        speed_lane = "{}".format(secs[1])
+
     # Angle1A,Angle1B,Angle2A,Angle2B,Cateto1A,Cateto1B,Hipotenusa1,Cateto2A,
     # Cateto2B,Hipotenusa2,Area1,Area2,Angle_all1,Angle_all2,Cateto_all1,
     # Cateto_all2,Hipotenusa_all,s1,s2,s3,s4,X_limit1,X_limit2,w1,h1,w2,
-    # h2,fps,width,height,time,score,class,bbox1,bbox2,bbox3,bbox4,frame counter
-    with open(file_name, "a+") as f:
-        f.write("{},{},{},{},{},{},{},{},{},{},{},{},{:.15f},{:.15f},{:.15f},{:.15f},{:.15f},{},{},{},{}\n"
-            .format(
-                ",".join(map(lambda x: "{:.15f}".format(x), angle1)),
-                ",".join(map(lambda x: "{:.15f}".format(x), angle2)),
-                ",".join(map(str, dim1)),
-                ",".join(map(str, dim2)),
-                area1,
-                area2,
-                ",".join(map(lambda x: "{:.15f}".format(x), angle_all)),
-                ",".join(map(str, dim_all)),
+    # h2,fps,width,height,time,score,class,speed,lane(optional),frame counter
+    line = "{},{},{},{},{},{},{},{},{},{},{},{},{:.15f},{:.15f},{:.15f},{:.15f},{:.15f},{},{},{}\n".format(
+            ",".join(map(lambda x: "{:.15f}".format(x), angle1)),
+            ",".join(map(lambda x: "{:.15f}".format(x), angle2)),
+            ",".join(map(str, dim1)),
+            ",".join(map(str, dim2)),
+            area1,
+            area2,
+            ",".join(map(lambda x: "{:.15f}".format(x), angle_all)),
+            ",".join(map(str, dim_all)),
 
-                ",".join(map(lambda x: ",".join(map(str,x)), straight_all)),
+            ",".join(map(lambda x: ",".join(map(str,x)), straight_all)),
 
-                ",".join(map(str, trk.x_limits)),
+            ",".join(map(str, trk.x_limits)),
 
-                ",".join(map(str, perimeter1)),
-                ",".join(map(str, perimeter2)),
-                trk.g_vars["fps"],
-                trk.g_vars["width"],
-                trk.g_vars["height"],
-                time,
-                trk.score,
-                trk.class_id,
-                trk.g_vars["seconds"][0][1],
-                ",".join(map(str,trk.box)),
-                trk.g_vars["f_count"]
-            )
+            ",".join(map(str, perimeter1)),
+            ",".join(map(str, perimeter2)),
+            trk.g_vars["fps"],
+            trk.g_vars["width"],
+            trk.g_vars["height"],
+            time,
+            trk.score,
+            trk.class_id,
+            speed_lane,
+            trk.g_vars["f_count"]
         )
+
+    img_r = None
+    img_path = None
     if img is not None:
         img_w = np.copy(img)
+        utils.draw_all_boxes(img_w, [trk.box], box_color=(255,255,255))
+
+        im3 = np.copy(img_w)
+        im4 = np.copy(img_w)
 
         utils.draw_triangule(straight2, img_w)
-        utils.draw_all_boxes(img_w, [trk.box], box_color=(255,255,255))
-        utils.draw_limits_area(img_w, trk.x_limits, trk.g_vars["c_img"])
+        utils.draw_triangule(straight_all, im3)
+
         trk.imgs.append(img_w)
-        # trk.imgs.append(np.copy(img_w))
-        # trk.imgs.append(np.copy(img_w))
+        trk.imgs.append(np.copy(im3))
+        trk.imgs.append(np.copy(im4))
 
-        # im3 = np.concatenate((trk.imgs[:2]), axis=1)
-        # im4 = np.concatenate((trk.imgs[2:]), axis=1)
+        im5 = np.concatenate((trk.imgs[:2]), axis=1)
+        im6 = np.concatenate((trk.imgs[2:]), axis=1)
 
-        cv2.imwrite(
-            "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
-            np.concatenate((trk.imgs), axis=1)
-        )
+        img_path = "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"])
+        img_r = np.concatenate((im5, im6), axis=0)
 
     del trk.g_vars["seconds"][0]
+
+    if save_csv:
+        cv2.imwrite(img_path, img_r)
+        file_name = "{}/{}.csv".format(
+            trk.g_vars["root_path"],
+            trk.g_vars["file_name"]
+        )
+        with open(file_name, "a+") as f:
+            f.write(line)
+
+    return (line, img_r, img_path)
 
 def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
     show=True, out_csv=False, set_time=False):
