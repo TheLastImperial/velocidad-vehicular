@@ -12,26 +12,6 @@ from scipy.optimize import linear_sum_assignment
 import cv2
 
 from TLI import utils
-def box_iou2(a, b):
-    '''
-    Helper funciton to calculate the ratio between intersection
-    and the union of two boxes a and b
-    a[0], a[1], a[2], a[3] <-> left, up, right, bottom
-    '''
-
-    w_intsec = np.maximum (0, (np.minimum(a[2], b[2]) -
-        np.maximum(a[0], b[0])))
-    h_intsec = np.maximum (0, (np.minimum(a[3], b[3]) -
-        np.maximum(a[1], b[1])))
-    s_intsec = w_intsec * h_intsec
-    s_a = (a[2] - a[0])*(a[3] - a[1])
-    s_b = (b[2] - b[0])*(b[3] - b[1])
-
-    c = float(s_intsec)
-    d = (s_a + s_b -s_intsec)
-    if d == 0:
-        return 0
-    return c/d
 
 class Tracker(): # class for Kalman Filter-based tracker
     def __init__(self, x_limits, g_vars):
@@ -98,8 +78,12 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.roc = 0
         self.straight = [[]]
         self.straights = []
+        self.dimensions = []
         self.angle = []
         self.angles = []
+        self.dimension = []
+
+        self.boxes = []
 
         self.class_id = None
         self.score = None
@@ -107,7 +91,8 @@ class Tracker(): # class for Kalman Filter-based tracker
         self.x_limits = x_limits
         self.limits_ind = [None, None]
         self.g_vars = g_vars
-        self.saved = False
+        self.saved = [False, False]
+        self.imgs = []
 
     def update_R(self):
         R_diag_array = self.R_scaler * np.array([self.L, self.L,
@@ -116,6 +101,7 @@ class Tracker(): # class for Kalman Filter-based tracker
 
     def add_box(self, box):
         self.box = box
+        self.boxes.append(box)
 
         top, left, bottom, right = box[0], box[1], box[2], box[3]
 
@@ -139,14 +125,15 @@ class Tracker(): # class for Kalman Filter-based tracker
             self.roc = float(ant - act) / (float(ant) + 0.000001)
         self.rocs.append(self.roc)
 
-        self.straight, self.angle = self.gen_straight()
+        self.straight, self.angle, self.dimension = self.gen_straight()
         self.straights.append(self.straight)
         self.angles.append(self.angle)
+        self.dimensions.append(self.dimension)
 
         # if self.x_limits is not None:
-        if self.limits_ind[0] is None and left >= self.x_limits[0]:
+        if self.limits_ind[0] is None and self.center[0] >= self.x_limits[0]:
             self.limits_ind[0] = len(self.areas) - 1
-        elif self.limits_ind[1] is None and right >= self.x_limits[1]:
+        elif self.limits_ind[1] is None and self.center[0] >= self.x_limits[1]:
             self.limits_ind[1] = len(self.areas) - 1
 
     # This method return the track but with a jump intervale.
@@ -193,11 +180,12 @@ class Tracker(): # class for Kalman Filter-based tracker
 
         straight = []
         straight.append(x)
-        straight.append(y_line)
+        straight.append(np.array([int(y) for y in y_line]))
         straight = np.array(straight).T
 
         A = 0.0
         B = 0.0
+        c1, c2, h = 0, 0, 0
         import math
 
         if len(x) > 1:
@@ -206,10 +194,16 @@ class Tracker(): # class for Kalman Filter-based tracker
 
             A = math.atan((pt1[0] - pt2[0])/(pt1[1] - pt2[1] + 0.0000001))
             A = math.degrees(A)
-            straight = [pt1, pt2]
+            straight = np.array([pt1, pt2])
             B = 90.0 - A
 
-        return np.array(straight), [A, B]
+
+            c1 = pt2[1] - pt1[1]
+            c2 = pt2[0] - pt1[0]
+
+            h = int(math.sqrt(c1**2 + c2**2))
+
+        return np.array(straight), [A, B], [c1, c2, h]
 
     def kalman_filter(self, z):
         '''
@@ -252,7 +246,7 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
         #trk = convert_to_cv2bbox(trk)
         for d,det in enumerate(detections):
          #   det = convert_to_cv2bbox(det)
-            IOU_mat[t,d] = box_iou2(trk, det)
+            IOU_mat[t,d] = utils.box_iou2(trk, det)
 
     # Produces matches
     # Solve the maximizing the sum of IOU assignment problem using the
@@ -291,6 +285,85 @@ def assign_detections_to_trackers(trackers, detections, iou_thrd = 0.3):
 
     return (matches, np.array(unmatched_detections),
             np.array(unmatched_trackers))
+
+# tracker_list: Es una lista con objetos de tipo Tracker
+def gen_trackers(prediction, max_age, min_hits, tracker_list, track_id_list,
+    x_limits, g_vars, cut_img=None, out_csv=False
+    ):
+    # Contine solo las bbox de los objetos Tracker.
+    bboxes, scores, classes = prediction
+    x_box =[]
+
+    if len(tracker_list) > 0:
+        for trk in tracker_list:
+            x_box.append(trk.box)
+
+    matched, unmatched_dets, unmatched_trks = assign_detections_to_trackers(
+            x_box, bboxes, iou_thrd = 0.3
+        )
+
+    # Deal with matched detections
+    if matched.size >0:
+        for trk_idx, det_idx in matched:
+            z = bboxes[det_idx]
+            z = np.expand_dims(z, axis=0).T
+            tmp_trk= tracker_list[trk_idx]
+            tmp_trk.score = scores[det_idx]
+            tmp_trk.kalman_filter(z)
+            xx = tmp_trk.x_state.T[0].tolist()
+            xx =[xx[0], xx[2], xx[4], xx[6]]
+            x_box[trk_idx] = xx
+            tmp_trk.add_box(xx)
+            tmp_trk.hits += 1
+            tmp_trk.no_losses = 0
+
+    # Deal with unmatched detections
+    if len(unmatched_dets)>0:
+        for idx in unmatched_dets:
+            z = bboxes[idx]
+            z = np.expand_dims(z, axis=0).T
+            tmp_trk = Tracker(x_limits=x_limits, g_vars=g_vars) # Create a new tracker
+            tmp_trk.class_id = classes[idx]
+            tmp_trk.score = scores[idx]
+            x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
+            tmp_trk.x_state = x
+            tmp_trk.predict_only()
+            xx = tmp_trk.x_state
+            xx = xx.T[0].tolist()
+            xx =[xx[0], xx[2], xx[4], xx[6]]
+            tmp_trk.add_box(xx)
+            tmp_trk.id = track_id_list.popleft() # assign an ID for the tracker
+            tracker_list.append(tmp_trk)
+            x_box.append(xx)
+
+    # Deal with unmatched tracks
+    if len(unmatched_trks)>0:
+        for trk_idx in unmatched_trks:
+            tmp_trk = tracker_list[trk_idx]
+            tmp_trk.no_losses += 1
+            tmp_trk.predict_only()
+            xx = tmp_trk.x_state
+            xx = xx.T[0].tolist()
+            xx =[xx[0], xx[2], xx[4], xx[6]]
+            tmp_trk.add_box(xx)
+            x_box[trk_idx] = xx
+
+
+    # The list of tracks to be annotated
+    good_tracker_list =[]
+    for trk in tracker_list:
+        # print("Classes: {}, TrkH: {}, Min: {}, TrkN: {}, Max: {}".format(
+        #    str(len(classes)), trk.hits, min_hits, trk.no_losses, max_age))
+        if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
+             good_tracker_list.append(trk)
+    # Book keeping
+    deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
+
+    for trk in deleted_tracks:
+            track_id_list.append(trk.id)
+
+    tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
+    return tracker_list, track_id_list, good_tracker_list
 
 # tracker_list: Es una lista con objetos de tipo Tracker
 def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
@@ -390,11 +463,28 @@ def detector(img, yolo, max_age, min_hits, tracker_list, track_id_list,
     tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
     return img
 
-def save_trk(trk, tracker_list, img=None):
+def save_trk(trk, tracker_list, img=None, save_csv=False):
+
+    if trk.limits_ind[0] is not None and \
+            trk.limits_ind[1] is None \
+        and not trk.saved[0] and img is not None:
+        straight1 = trk.straights[trk.limits_ind[0]]
+        angle1 = trk.angles[trk.limits_ind[0]]
+
+        if len(straight1) != 2:
+            return
+
+        img_w = np.copy(img)
+        utils.draw_triangule(straight1, img_w)
+        utils.draw_all_boxes(img_w, [trk.box], box_color=(255, 255, 255))
+        utils.draw_limits_area(img_w, trk.x_limits, trk.g_vars["c_img"])
+        trk.imgs.append(img_w)
+        trk.saved[0] = True
+
     # Garantiza que ya se tenga la imagen de entrada y salida.
     if trk.limits_ind[0] is None or \
             trk.limits_ind[1] is None \
-        or trk.saved:
+        or trk.saved[1]:
         return
 
     if len(trk.g_vars["seconds"]) == 0:
@@ -407,9 +497,20 @@ def save_trk(trk, tracker_list, img=None):
     if int(r_time) <= trk.g_vars["seconds"][0][0]:
         return
 
-    trk.saved = True
-    _, angle1 = trk.gen_straight([0,trk.limits_ind[0]])
-    _, angle2 = trk.gen_straight(trk.limits_ind)
+    trk.saved[1] = True
+
+    straight1 = trk.straights[trk.limits_ind[0]]
+    angle1 = trk.angles[trk.limits_ind[0]]
+    dim1 = trk.dimensions[trk.limits_ind[0]]
+
+    if len(straight1) != 2:
+        return
+
+    straight2, angle2, dim2 = trk.gen_straight(trk.limits_ind)
+
+    straight_all = trk.straights[trk.limits_ind[1]]
+    angle_all = trk.angles[trk.limits_ind[1]]
+    dim_all = trk.dimensions[trk.limits_ind[1]]
 
     if angle1[0] == 0 or angle1[1] == 0 or \
         angle2[0] == 0 or angle2[1] == 0:
@@ -417,33 +518,87 @@ def save_trk(trk, tracker_list, img=None):
 
     area1 = trk.areas[trk.limits_ind[0]]
     area2 = trk.areas[trk.limits_ind[1]]
+
+    top, left, bottom, right = trk.boxes[trk.limits_ind[0]]
+    perimeter1 = [right-left, bottom-top]
+
+    top, left, bottom, right = trk.boxes[trk.limits_ind[1]]
+    perimeter2 = [right-left, bottom-top]
+
     time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.g_vars["fps"]
 
+    # Set speed and lane in a variable
+    secs = trk.g_vars["seconds"][0]
+    speed_lane = ""
+    if len(secs) == 3:
+        speed_lane = "{},{}".format(secs[1], secs[2])
+    else:
+        speed_lane = "{}".format(secs[1])
 
-    file_name = "{}/{}.csv".format(
-        trk.g_vars["root_path"],
-        trk.g_vars["file_name"]
-    )
-    # Angle1A, Angle1B, Angle2A, Angle2B, area1, area2, fps, width, height,
-    # time, score, class, bbox, frame counter
-    with open(file_name, "a+") as f:
-        f.write("{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{}\n"
-            .format(",".join(map(lambda x: "{:.3f}".format(x), angle1)),
-                ",".join(map(lambda x: "{:.3f}".format(x), angle2)),
-                area1, area2, trk.g_vars["fps"], trk.g_vars["width"],
-                trk.g_vars["height"], time, trk.score, trk.class_id,
-                trk.g_vars["seconds"][0][1],
-                ",".join(map(str,trk.box)), trk.g_vars["f_count"]
-            )
+    # Angle1A,Angle1B,Angle2A,Angle2B,Cateto1A,Cateto1B,Hipotenusa1,Cateto2A,
+    # Cateto2B,Hipotenusa2,Area1,Area2,Angle_all1,Angle_all2,Cateto_all1,
+    # Cateto_all2,Hipotenusa_all,s1,s2,s3,s4,X_limit1,X_limit2,w1,h1,w2,
+    # h2,fps,width,height,time,score,class,speed,lane(optional),frame counter
+    line = "{},{},{},{},{},{},{},{},{},{},{},{},{:.15f},{:.15f},{:.15f},{:.15f},{:.15f},{},{},{}\n".format(
+            ",".join(map(lambda x: "{:.15f}".format(x), angle1)),
+            ",".join(map(lambda x: "{:.15f}".format(x), angle2)),
+            ",".join(map(str, dim1)),
+            ",".join(map(str, dim2)),
+            area1,
+            area2,
+            ",".join(map(lambda x: "{:.15f}".format(x), angle_all)),
+            ",".join(map(str, dim_all)),
+
+            ",".join(map(lambda x: ",".join(map(str,x)), straight_all)),
+
+            ",".join(map(str, trk.x_limits)),
+
+            ",".join(map(str, perimeter1)),
+            ",".join(map(str, perimeter2)),
+            trk.g_vars["fps"],
+            trk.g_vars["width"],
+            trk.g_vars["height"],
+            time,
+            trk.score,
+            trk.class_id,
+            speed_lane,
+            trk.g_vars["f_count"]
         )
+
+    img_r = None
+    img_path = None
     if img is not None:
-        utils.draw_all_boxes(img, [trk.box], box_color=(255,255,255))
-        cv2.imwrite(
-            "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"]),
-            img
-        )
+        img_w = np.copy(img)
+        utils.draw_all_boxes(img_w, [trk.box], box_color=(255,255,255))
+
+        im3 = np.copy(img_w)
+        im4 = np.copy(img_w)
+
+        utils.draw_triangule(straight2, img_w)
+        utils.draw_triangule(straight_all, im3)
+
+        trk.imgs.append(img_w)
+        trk.imgs.append(np.copy(im3))
+        trk.imgs.append(np.copy(im4))
+
+        im5 = np.concatenate((trk.imgs[:2]), axis=1)
+        im6 = np.concatenate((trk.imgs[2:]), axis=1)
+
+        img_path = "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"])
+        img_r = np.concatenate((im5, im6), axis=0)
 
     del trk.g_vars["seconds"][0]
+
+    if save_csv:
+        cv2.imwrite(img_path, img_r)
+        file_name = "{}/{}.csv".format(
+            trk.g_vars["root_path"],
+            trk.g_vars["file_name"]
+        )
+        with open(file_name, "a+") as f:
+            f.write(line)
+
+    return (line, img_r, img_path)
 
 def detection(video_path, yolo, x_limits, cut_img=None, video_out=None,
     show=True, out_csv=False, set_time=False):
