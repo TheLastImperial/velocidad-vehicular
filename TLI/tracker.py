@@ -506,31 +506,45 @@ def save_trk(trk, tracker_list, img=None, save_csv=False):
     if len(straight1) != 2:
         return
 
-    straight2, angle2, dim2 = trk.gen_straight(trk.limits_ind)
+    straight_all = trk.straights[-1]
+    angle_all = trk.angles[-1]
+    dim_all = trk.dimensions[-1]
 
-    straight_all = trk.straights[trk.limits_ind[1]]
-    angle_all = trk.angles[trk.limits_ind[1]]
-    dim_all = trk.dimensions[trk.limits_ind[1]]
+
+    # Calculate straight, angle and dimensions to the second fields.
+    import math
+    B = straight_all[1][0] - trk.x_limits[0]
+    A = (B * math.degrees(math.sin(math.radians(angle_all[1])))) / math.degrees(math.sin(math.radians(angle_all[0])))
+    y_r = int(straight_all[1][1] - A)
+
+    straight2 = np.array([np.array([trk.x_limits[0], y_r]), straight_all[-1]])
+    angle2 = np.copy(angle_all)
+    dim2 = []
+    dim2.append(straight2[1][0] - straight2[0][0])
+    dim2.append(straight2[1][1] - straight2[0][1])
+    dim2.append(math.sqrt(dim2[0]**2 + dim2[1]**2))
+
 
     if angle1[0] == 0 or angle1[1] == 0 or \
         angle2[0] == 0 or angle2[1] == 0:
         return
 
     area1 = trk.areas[trk.limits_ind[0]]
-    area2 = trk.areas[trk.limits_ind[1]]
+    area2 = trk.areas[-1]
 
     top, left, bottom, right = trk.boxes[trk.limits_ind[0]]
     perimeter1 = [right-left, bottom-top]
 
-    top, left, bottom, right = trk.boxes[trk.limits_ind[1]]
+    top, left, bottom, right = trk.boxes[-1]
     perimeter2 = [right-left, bottom-top]
 
-    time = (trk.limits_ind[1] - trk.limits_ind[0]) / trk.g_vars["fps"]
+    counter = (len(trk.areas) - trk.limits_ind[0]) - 1
+    time =  counter / trk.g_vars["fps"]
 
     # Set speed and lane in a variable
     secs = trk.g_vars["seconds"][0]
     speed_lane = ""
-    if len(secs) == 3:
+    if len(secs) >= 3:
         speed_lane = "{},{}".format(secs[1], secs[2])
     else:
         speed_lane = "{}".format(secs[1])
@@ -581,11 +595,9 @@ def save_trk(trk, tracker_list, img=None, save_csv=False):
         trk.imgs.append(np.copy(im3))
         trk.imgs.append(np.copy(im4))
 
-        im5 = np.concatenate((trk.imgs[:2]), axis=1)
-        im6 = np.concatenate((trk.imgs[2:]), axis=1)
+        img_r = np.concatenate((trk.imgs[:2]), axis=1)
 
         img_path = "{}/{}.jpg".format(trk.g_vars["root_path"], trk.g_vars["f_count"])
-        img_r = np.concatenate((im5, im6), axis=0)
 
     del trk.g_vars["seconds"][0]
 

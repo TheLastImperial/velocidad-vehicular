@@ -177,17 +177,6 @@ def main(_argv):
         result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
         TLI_utils.draw_limits_area(result, FLAGS.x_lim, FLAGS.c_img)
 
-        for trk in good_tracker_list:
-            TLI_utils.draw_tracker(result, trk)
-            if FLAGS.csv:
-                r = save_trk(trk,
-                    tracker_list,
-                    result,
-                    save_csv = not FLAGS.csv_save_last)
-
-                if r is not None and FLAGS.csv_save_last:
-                    csv_result.append(r)
-
         if FLAGS.time:
             fps = 1.0 / (time.time() - start_time)
             seconds = time.time() - start_time_r
@@ -200,6 +189,17 @@ def main(_argv):
                 .format(g_vars["fps"], g_vars["f_count"]), pos=(30, 90)
             )
             TLI_utils.set_text(result, "FPS P: {}".format(fps), pos=(30, 120))
+
+        for trk in good_tracker_list:
+            TLI_utils.draw_tracker(result, trk)
+            if FLAGS.csv:
+                r = save_trk(trk,
+                    tracker_list,
+                    result,
+                    save_csv = not FLAGS.csv_save_last)
+
+                if r is not None and FLAGS.csv_save_last:
+                    csv_result.append(r)
 
 
 
